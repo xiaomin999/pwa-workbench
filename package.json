@@ -1,0 +1,13 @@
+{
+  "name": "xiaozhuli-backend",
+  "version": "1.0.0",
+  "description": "小助理工作台后端：选题热点 / 理财资讯 / AI 对话代理（零依赖 Node 服务）",
+  "main": "fetch-server.js",
+  "scripts": {
+    "start": "node fetch-server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}
