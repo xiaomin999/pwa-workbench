@@ -330,7 +330,8 @@ const DB = {
     if(!d.market) d.market={items:[],reports:[],lastWeeklyDate:'',follow:[],lastFetch:'',auto:false}; if(!d.market.items) d.market.items=[]; if(!d.market.reports) d.market.reports=[]; if(!d.market.follow||!d.market.follow.length) d.market.follow=['半导体','人工智能','新能源','医药','消费','金融','周期资源','军工','地产'];
     if(!d.saveasy) d.saveasy={deals:[],selectPlatform:'全部',dailyDate:''}; if(!d.saveasy.deals) d.saveasy.deals=[]; if(!d.saveasy.selectPlatform) d.saveasy.selectPlatform='全部';
     if(!d.settings.profile) d.settings.profile=seed.settings.profile;
-    if(!d.settings.net) d.settings.net={endpoint:'',auto:false};
+    if(!d.settings.net) d.settings.net={endpoint:'',auto:false,industry:'office,beauty'};
+    else if(!d.settings.net.industry) d.settings.net.industry='office,beauty';
     if(!d.settings.marketApi) d.settings.marketApi='';
     if(!d.settings.aiProxy) d.settings.aiProxy='';
     d.ach=d.ach||{streaks:{},best:{}};
@@ -2473,7 +2474,9 @@ function renderSettings(){
       <div class="small muted mb">配置本地抓取服务地址后，「选题&灵感」可一键联网拉取抖音/小红书最新真实热点（需运行配套 fetch-server.js）。留空则使用内置真实种子库（按日轮转）。</div>
       <div class="kv"><span class="k">抓取端点</span><span>${s.net.endpoint?'已配置':'未配置'}</span></div>
       <div class="kv"><span class="k">自动刷新</span><span>${s.net.auto?'开启':'关闭'}</span></div>
+      <div class="kv"><span class="k">内容领域</span><span>${netIndustryLabels(s.net.industry)}</span></div>
       <button class="btn ghost mt" onclick="editNet()">配置联网端点</button>
+      <button class="btn ghost mt" onclick="editNetIndustry()">配置内容领域</button>
       <button class="btn ghost mt" onclick="refreshTopicsNet()">🌐 立即联网刷新选题</button></div>
     <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📊 理财趋势资讯端点</span></div>
       <div class="small muted mb">配置后，「理财趋势」模块可联网拉取当日/近几日板块资讯（需运行配套 fetch-server.js 的 /api/market-news）。留空则使用内置真实种子或同源 /api/market-news。</div>
@@ -2484,6 +2487,10 @@ function renderSettings(){
 }
 function editAI(){ const s=DB.data.settings; UI.openForm('配置 AI API',[{key:'apiBase',label:'API Base URL',type:'text',placeholder:'https://api.openai.com/v1/chat/completions',value:s.apiBase},{key:'apiKey',label:'API Key',type:'password',value:s.apiKey},{key:'apiModel',label:'模型名',type:'text',value:s.apiModel}],v=>{ s.apiBase=v.apiBase; s.apiKey=v.apiKey; s.apiModel=v.apiModel; DB.save(); toast('已保存'); go('support/settings'); }); }
 function editNet(){ const s=DB.data.settings; UI.openForm('配置联网抓取端点',[{key:'endpoint',label:'抓取服务地址',type:'text',placeholder:'http://localhost:3001/api/topics',value:s.net.endpoint},{key:'auto',label:'打开App时自动联网刷新',type:'seg',options:['否','是'],value:s.net.auto?'是':'否'}],v=>{ s.net.endpoint=v.endpoint.trim(); s.net.auto=v.auto==='是'; DB.save(); toast('已保存'); if(s.net.endpoint) refreshTopicsNet(); go('support/settings'); }); }
+const NET_INDUSTRIES=[{key:'beauty',label:'美妆穿搭'},{key:'office',label:'职场办公'},{key:'finance',label:'财经理财'},{key:'knowledge',label:'知识科普'},{key:'food',label:'美食探店'},{key:'travel',label:'旅游'},{key:'parent',label:'育儿亲子'},{key:'fitness',label:'健身减脂'}];
+function netIndustryLabels(v){ const arr=(v||'').split(',').map(s=>s.trim()).filter(Boolean); if(!arr.length) return '通用'; return arr.map(k=>{ const o=NET_INDUSTRIES.find(x=>x.key===k); return o?o.label:k; }).join('、'); }
+function netToggleIndustry(k){ const s=DB.data.settings.net; const arr=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const i=arr.indexOf(k); if(i>=0) arr.splice(i,1); else arr.push(k); s.industry=arr.join(','); DB.save(); }
+function editNetIndustry(){ const s=DB.data.settings.net; const sel=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const body=`<div class="small muted mb">勾选你做内容的主要领域，热点选题会按这些领域生成专属「跟上做法/二改方法」（可多选，列表在领域间轮换）：</div><div class="list">${NET_INDUSTRIES.map(o=>`<div class="li" style="cursor:pointer" onclick="netToggleIndustry('${o.key}');editNetIndustry()"><span class="main"><div class="title">${o.label}</div></span><span class="right">${sel.includes(o.key)?'✅':'⬜'}</span></div>`).join('')}</div><div class="btn ghost mt" onclick="if(DB.data.settings.net.endpoint) refreshTopicsNet(); UI.closeSheet(); go('support/settings')">完成并刷新</div>`; UI.openSheet('配置内容领域', body, null, {}); }
 function editMarketApi(){ const s=DB.data.settings; UI.openForm('配置理财趋势资讯端点',[{key:'marketApi',label:'市场资讯服务地址',type:'text',placeholder:'http://localhost:3001/api/market-news',value:s.marketApi}],v=>{ s.marketApi=v.marketApi.trim(); DB.save(); toast('已保存'); if(s.marketApi) marketFetchNet(); go('support/settings'); }); }
 function editAIProxy(){ const s=DB.data.settings; UI.openForm('配置 AI 代理地址',[{key:'aiProxy',label:'代理服务地址',type:'text',placeholder:'https://你的后端/api/ai',value:s.aiProxy}],v=>{ s.aiProxy=v.aiProxy.trim(); DB.save(); toast('已保存'); go('support/settings'); }); }
 /* ============ 0.1 提醒与日程中心 ============ */
@@ -2602,8 +2609,9 @@ const DAILY_TOPIC_DB = {
 const NET = {
   async fetchDailyTopics(){
     const ep=DB.data.settings.net.endpoint; if(!ep) return null;
+    const ind=DB.data.settings.net.industry||'';
     try{
-      const r=await fetch(ep+(ep.includes('?')?'&':'?')+'date='+U.today());
+      const r=await fetch(ep+(ep.includes('?')?'&':'?')+'date='+U.today()+(ind?'&industry='+encodeURIComponent(ind):''));
       const j=await r.json();
       let arr=Array.isArray(j)?j:(j.items||j.topics||null);
       if(arr&&arr.length) return arr.map(x=>({
@@ -2664,7 +2672,8 @@ function checkReminders(){
 }
 function boot(){
   DB.load();
-  if(!DB.data.settings.net) DB.data.settings.net={endpoint:'',auto:false};
+  if(!DB.data.settings.net) DB.data.settings.net={endpoint:'',auto:false,industry:'office,beauty'};
+  else if(!DB.data.settings.net.industry) DB.data.settings.net.industry='office,beauty';
   if(!DB.data.ideas.daily) DB.data.ideas.daily={date:'',items:[],platform:'all'};
   markOverdue(); ensureDailyContent(); ensureIdeasDaily(); renderSidebar(); renderNav(); go('home');
   setInterval(checkReminders,60000);
