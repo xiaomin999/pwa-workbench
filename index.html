@@ -348,7 +348,7 @@ const DB = {
       diet:{ byDate:{} },
       weight:{ records:[] },
       save:{ goals:[], flows:[] },
-      ideas:{ items:[], daily:{date:'',items:[],platform:'all'}, net:{date:'',items:[]} },
+      ideas:{ items:[], daily:{date:'',items:[],platform:'all'}, net:{date:'',items:[]}, history:[] },
       hot:{ items:[], daily:{date:'',items:[]}, net:{date:'',all:[],idx:0} },
       ecom:{ products:[], selectPlatform:'抖音' },
       market:{ items:[], reports:[], lastWeeklyDate:'', follow:[], lastFetch:'', auto:false },
@@ -1541,37 +1541,66 @@ function delFlow(id){ if(!confirm('删除这笔收支记录？')) return; DB.dat
 function showProjection(){ const r=AIcompute.saveProjection(); UI.openSheet('📈 存钱测算',`<div class="small" style="white-space:pre-wrap;line-height:1.7">${U.escape(r)}</div><div class="btn ghost mt" onclick="UI.closeSheet()">知道了</div>`); }
 /* ============ 模块5 选题&灵感 ============ */
 function renderIdeas(){
-  ensureIdeasDaily();
+  if(!DB.data.ideas.history) DB.data.ideas.history=[];
+  const range=window._ideaRange||'live';
+  const kw=(window._ideaKw||'').trim();
   const plat=window._ideaPlat||'all';
-  const dailyAll=DB.data.ideas.daily.items||[];
-  const netAll=DB.data.ideas.net.items||[];
-  const daily = plat==='all'?dailyAll:dailyAll.filter(x=>x.platform===plat);
-  const net = plat==='all'?netAll:netAll.filter(x=>x.platform===plat);
-  const ptab=[['all','全部'],['抖音','抖音'],['小红书','小红书']].map(([k,n])=>`<button onclick="window._ideaPlat='${k}';renderIdeas()" style="flex:1;padding:9px 4px;border:1px solid ${plat===k?'#2b7de9':'#e6e6e6'};border-radius:10px;background:${plat===k?'#2b7de9':'#fff'};color:${plat===k?'#fff':'#333'};font-size:13px">${n}</button>`).join('');
+  // 进入实时页且未加载时静默补齐一次联网热点（只拉一次，避免重复）
+  if(DB.data.settings.net.endpoint && !(DB.data.ideas.net.items&&DB.data.ideas.net.items.length) && range==='live') refreshTopicsNet(true);
+  const today=U.today();
+  const ranges=[['live','实时'],['7','近7天'],['30','近1个月'],['90','近3个月']];
+  const rangeTab=ranges.map(([k,n])=>`<button onclick="window._ideaRange='${k}';renderIdeas()" style="flex:1;padding:8px 2px;border:1px solid ${range===k?'#2b7de9':'#e6e6e6'};border-radius:10px;background:${range===k?'#2b7de9':'#fff'};color:${range===k?'#fff':'#333'};font-size:12px">${n}</button>`).join('');
+  const platTab=[['all','全部'],['抖音','抖音'],['小红书','小红书']].map(([k,n])=>`<button onclick="window._ideaPlat='${k}';renderIdeas()" style="flex:1;padding:9px 4px;border:1px solid ${plat===k?'#2b7de9':'#e6e6e6'};border-radius:10px;background:${plat===k?'#2b7de9':'#fff'};color:${plat===k?'#fff':'#333'};font-size:13px">${n}</button>`).join('');
   const pstyle=p=>(p==='抖音'?'background:#fff0f3;color:#ff2d55':'background:#fdeef3;color:#ff4d8d');
   const hstyle=h=>(h==='高'?'background:#ffeaea;color:#e23':h==='中'?'background:#fff4e6;color:#e08a00':'background:#f0f0f0;color:#888');
   const card=h=>`<div class="li"><span class="main"><div class="title">${U.escape(h.title)}</div>
-      <div class="desc"><span style="font-size:11px;padding:2px 7px;border-radius:6px;${pstyle(h.platform)}">${h.platform}</span> <span style="font-size:11px;padding:2px 7px;border-radius:6px;${hstyle(h.heat)}">热度${h.heat}</span> <a href="${h.url}" style="color:#2b7de9;font-size:12px" onclick="event.stopPropagation()">来源›</a></div>
+      <div class="desc"><span style="font-size:11px;padding:2px 7px;border-radius:6px;${pstyle(h.platform)}">${h.platform}</span> <span style="font-size:11px;padding:2px 7px;border-radius:6px;${hstyle(h.heat)}">热度${h.heat}</span> ${h.date&&range!=='live'?`<span class="small muted">${h.date}</span> `:''}<a href="${h.url}" style="color:#2b7de9;font-size:12px" onclick="event.stopPropagation()">来源›</a></div>
       <div class="small muted mt">跟上做法：${U.escape(h.follow)}</div>
       <div class="small muted">二改方法：${U.escape(h.remake)}</div></span>
       <div style="margin-top:8px"><button class="btn soft sm" onclick="saveTopic('${h.id}')" style="padding:6px 12px;background:#eef6ff;color:#2b7de9;border:none;border-radius:8px;font-size:13px">＋ 存为灵感</button></div></div>`;
-  // 本地选题（内置种子）—— 与联网热点分开展示，互不覆盖
-  const localSec = daily.length?`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📋 本地选题（内置种子）</span><span class="more">${U.today()}</span></div>
-    <div class="list">${daily.map(h=>card(h)).join('')}</div>
-    <div class="btn ghost mt" onclick="refreshTopicsLocal()">🔄 换一批选题</div></div>`:`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📋 本地选题（内置种子）</span></div><div class="empty"><div class="big">💡</div>暂无本地选题，点下方按钮换一批</div></div>`;
-  // 联网真实热点（抖音/小红书）—— 独立展示
+  // 计算展示列表：实时 / 按时间段从本地历史检索
+  let pool=[], spanLabel='实时热点', cut='';
+  if(range==='live'){
+    pool=DB.data.ideas.net.items||[];
+  } else {
+    const n=+range;
+    cut=U.fmt(U.addDays(today,-(n-1)));
+    const seen={};
+    DB.data.ideas.history.forEach(rec=>{
+      if(rec.date>=cut){ (rec.items||[]).forEach(it=>{ if(!seen[it.title]||rec.date>seen[it.title]._date){ seen[it.title]={...it,date:rec.date,_date:rec.date}; } }); }
+    });
+    pool=Object.values(seen);
+    spanLabel='近'+ranges.find(r=>r[0]===range)[1].replace('近','');
+  }
+  if(plat!=='all') pool=pool.filter(x=>x.platform===plat);
+  if(kw) pool=pool.filter(x=>(x.title+' '+(x.follow||'')+' '+(x.remake||'')).toLowerCase().includes(kw.toLowerCase()));
+  pool=pool.slice().sort((a,b)=>(b.date||today).localeCompare(a.date||today));
   const netConf=!!DB.data.settings.net.endpoint;
-  const netSec = netConf ? (net.length?`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网真实热点（抖音/小红书）</span><span class="more">${U.today()}</span></div>
-    <div class="list">${net.map(h=>card(h)).join('')}</div>
-    <div class="btn ghost mt" onclick="refreshTopicsNet()">🌐 换一批联网热点</div></div>`
-    :`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网真实热点（抖音/小红书）</span></div><div class="empty"><div class="big">🌐</div>点下方按钮获取抖音/小红书最新选题</div><div class="btn ghost mt" onclick="refreshTopicsNet()">🌐 联网刷新真实热点</div></div>`)
-    : `<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网真实热点</span></div><div class="small muted" style="padding:10px;line-height:1.6">未配置联网端点。去「设置 → 联网抓取」填写抓取服务地址后，可拉取抖音/小红书实时热点。当前显示内置选题。</div></div>`;
+  let listSec;
+  if(!netConf && !pool.length){
+    listSec=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网真实热点（抖音/小红书）</span></div><div class="small muted" style="padding:10px;line-height:1.6">未配置联网端点。去「设置 → 联网抓取」填写抓取服务地址后，可拉取抖音/小红书实时热点，并自动按时间积累历史，支持近7天 / 近1个月 / 近3个月检索。</div></div>`;
+  } else if(!pool.length){
+    if(range==='live'){
+      listSec=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网真实热点</span></div><div class="empty"><div class="big">🌐</div>点下方「换一批联网热点」拉取抖音/小红书最新热点</div><div class="btn ghost mt" onclick="refreshTopicsNet()">🌐 换一批联网热点</div></div>`;
+    } else {
+      listSec=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>🕒 ${spanLabel}</span></div><div class="empty"><div class="big">🕒</div>${spanLabel}暂无可检索历史。应用会在你每次联网检索时自动积累热点；先点「换一批联网热点」拉取最新实时热点，之后即可按时间段回看。</div></div>`;
+    }
+  } else {
+    const head=range==='live'?'🌐 联网真实热点（抖音/小红书）':'🕒 '+spanLabel+'（'+pool.length+' 条）';
+    listSec=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>${head}</span><span class="more">${range==='live'?today:(cut+' ~ '+today)}</span></div>
+      <div class="list">${pool.map(h=>card(h)).join('')}</div>
+      <div class="btn ghost mt" onclick="refreshTopicsNet()">🌐 换一批联网热点</div></div>`;
+  }
   const items=DB.data.ideas.items.slice().reverse();
   const st={draft:'草稿',todo:'待完善',ready:'可用选题',made:'已制作',dead:'废弃'};
-  UI.mount(`<div class="page-head"><h1>选题&灵感</h1><span class="sub">每日热点+灵感库</span></div>
-    <div style="display:flex;gap:8px;margin:0 0 10px">${ptab}</div>
-    ${localSec}
-    ${netSec}
+  UI.mount(`<div class="page-head"><h1>选题&灵感</h1><span class="sub">联网热点·按时间检索</span></div>
+    <div style="display:flex;gap:6px;margin:0 0 8px">${rangeTab}</div>
+    <div style="display:flex;gap:6px;margin:0 0 8px">
+      <input id="ideaKw" placeholder="搜索热点关键词…" value="${U.escape(kw)}" oninput="window._ideaKw=this.value" onkeydown="if(event.key==='Enter')renderIdeas()" style="flex:1;padding:9px;border:1px solid #e6e6e6;border-radius:8px;font-size:13px"/>
+      <button class="btn ghost" style="padding:9px 14px" onclick="renderIdeas()">搜索</button>
+    </div>
+    <div style="display:flex;gap:8px;margin:0 0 10px">${platTab}</div>
+    ${listSec}
     <div class="btn ghost mb" onclick="addIdea()">➕ 记我的灵感</div>
     <div style="margin:14px 0 8px;font-size:13px;color:#888;font-weight:600">我的灵感库（${items.length}）</div>
     ${items.length?`<div class="list">${items.map(it=>`<div class="li" onclick="ideaDetail('${it.id}')"><span class="main"><div class="title">${it.title}</div><div class="desc">${(it.tags||[]).join(' ')} ${it.audience?'· '+it.audience:''}</div></span><span class="pill ${it.status==='ready'?'green':it.status==='dead'?'gray':'blue'}">${st[it.status]}</span><button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="event.stopPropagation();delIdea('${it.id}')">✕</button></div>`).join('')}</div>`:'<div class="empty"><div class="big">💡</div>对话中说「保存灵感：低成本居家减脂餐短视频」</div>'}`);
@@ -2713,26 +2742,8 @@ const NET = {
 };
 function pickRot(arr,n,off){ const r=[]; for(let i=0;i<n;i++) r.push(arr[((i+off)%arr.length+arr.length)%arr.length]); return r; }
 function ensureIdeasDaily(){
-  const t=U.today();
-  if(DB.data.ideas.daily.date===t && DB.data.ideas.daily.items.length){
-    if(DB.data.settings.net.auto && DB.data.settings.net.endpoint) refreshTopicsNet(true);
-    return;
-  }
-  const idx=Math.floor(Date.parse(t)/86400000)%7;
-  const items=[
-    ...pickRot(DAILY_TOPIC_DB.douyin,6,idx).map(x=>({...x,id:U.uid(),platform:'抖音'})),
-    ...pickRot(DAILY_TOPIC_DB.xhs,6,idx+2).map(x=>({...x,id:U.uid(),platform:'小红书'}))
-  ];
-  DB.data.ideas.daily={date:t,items,platform:'all'}; DB.save();
-  if(DB.data.settings.net.auto && DB.data.settings.net.endpoint) refreshTopicsNet(true);
-}
-function refreshTopicsLocal(){
-  const off=Math.floor(Math.random()*DAILY_TOPIC_DB.douyin.length);
-  const items=[
-    ...pickRot(DAILY_TOPIC_DB.douyin,6,off).map(x=>({...x,id:U.uid(),platform:'抖音'})),
-    ...pickRot(DAILY_TOPIC_DB.xhs,6,off+3).map(x=>({...x,id:U.uid(),platform:'小红书'}))
-  ];
-  DB.data.ideas.daily={date:U.today(),items,platform:'all'}; DB.save(); renderIdeas();
+  // 旧名保留（语音指令仍调用）。现已不生成「本地选题」内置种子，只保证联网热点已加载一次。
+  if(DB.data.settings.net.endpoint && !(DB.data.ideas.net.items&&DB.data.ideas.net.items.length)) refreshTopicsNet(true);
 }
 async function refreshTopicsNet(silent){
   const ep=DB.data.settings.net.endpoint;
@@ -2741,15 +2752,20 @@ async function refreshTopicsNet(silent){
   const items=await NET.fetchDailyTopics();
   if(items&&items.length){
     const arr=items.map(x=>({...x,id:U.uid()}));
-    // 与「本地选题」分库存储，避免互相覆盖产生冲突
-    DB.data.ideas.net={date:U.today(),items:arr}; DB.save();
+    DB.data.ideas.net={date:U.today(),items:arr};
+    // 写入按时间积累的历史（用于近7天 / 近1个月 / 近3个月检索），同一天覆盖更新
+    if(!DB.data.ideas.history) DB.data.ideas.history=[];
+    const today=U.today();
+    const ex=DB.data.ideas.history.find(r=>r.date===today);
+    if(ex) ex.items=arr; else { DB.data.ideas.history.unshift({date:today,items:arr}); if(DB.data.ideas.history.length>180) DB.data.ideas.history.length=180; }
+    DB.save();
     if(!silent) toast('已联网更新 '+arr.length+' 条真实热点 🌐');
     if(curRoute==='m/ideas') renderIdeas();
   } else if(!silent) toast('联网抓取失败（检查端点或抓取服务是否运行）');
 }
 function saveTopic(id){
-  let h=DB.data.ideas.daily.items.find(x=>x.id===id);
-  if(!h) h=DB.data.ideas.net.items.find(x=>x.id===id);
+  let h=(DB.data.ideas.net.items||[]).find(x=>x.id===id);
+  if(!h){ for(const rec of (DB.data.ideas.history||[])){ h=(rec.items||[]).find(x=>x.id===id); if(h) break; } }
   if(!h) return;
   DB.data.ideas.items.push({id:U.uid(),title:h.title,idea:`来源平台：${h.platform}\n跟上做法：${h.follow}\n二改方法：${h.remake}`,status:'todo',tags:[h.platform,'热点'],audience:'',form:'短视频',difficulty:'中',created:U.today()});
   Store.emit('ideas'); toast('已存为灵感 ✅');
@@ -2766,6 +2782,7 @@ function boot(){
   if(!DB.data.settings.net) DB.data.settings.net={endpoint:'',auto:false,industry:'office,beauty'};
   else if(!DB.data.settings.net.industry) DB.data.settings.net.industry='office,beauty';
   if(!DB.data.ideas.daily) DB.data.ideas.daily={date:'',items:[],platform:'all'};
+  if(!DB.data.ideas.history) DB.data.ideas.history=[];
   markOverdue(); ensureDailyContent(); ensureIdeasDaily(); renderSidebar(); renderNav(); go('home');
   setInterval(checkReminders,60000);
   // PWA: 注册 Service Worker（仅 http(s) 环境下生效，file:// 不注册）
