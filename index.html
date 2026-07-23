@@ -2078,8 +2078,13 @@ function marketFetchNet(silent){
         MarketAI.analyze(it); DB.data.market.items.push(it); added++;
       });
       DB.data.market.lastFetch=U.today(); DB.save();
-      if(!silent) toast(added?('已联网检索并新增 '+added+' 条资讯，下方「收录资讯」已同步更新 ✅'):'已是最新（无新增）');
-      else if(added) toast('自动联网检索新增 '+added+' 条');
+      const follow=DB.data.market.follow||[];
+      if(!silent){
+        if(added){
+          if(follow.length) toast('已联网检索并新增 '+added+' 条；「收录资讯」已按关注板块「'+follow.join('、')+'」过滤显示 ✅');
+          else toast('已联网检索并新增 '+added+' 条资讯，下方「收录资讯」已同步更新 ✅');
+        } else toast('已是最新（无新增）');
+      } else if(added) toast('自动联网检索新增 '+added+' 条');
       // 同步刷新「收录资讯」区：list tab 必刷新，advice tab 顺带刷新；collect/week 不打断用户当前视图
       if(curRoute==='m/market') renderMarket();
     })
@@ -2089,7 +2094,10 @@ function marketFetchNet(silent){
 function marketList(d){
   const f=window._mkF||{cat:'',sent:'',imp:'',kw:''};
   const secF=window._mkSec||'';
-  const items=d.items.filter(x=>!x.delete_status && (!secF || (x.target_sectors||[]).includes(secF)));
+  const follow=DB.data.market.follow||[];
+  const allActive=d.items.filter(x=>!x.delete_status);
+  // 联动「选择板块」：已选关注板块时，只显示 target_sectors 与之有交集的资讯（未选则显示全量）
+  const items=allActive.filter(x=>(!secF || (x.target_sectors||[]).includes(secF)) && (!follow.length || (x.target_sectors||[]).some(s=>follow.includes(s))));
   const filtered=items.filter(x=>
     (!f.cat||x.category_type===f.cat) && (!f.sent||x.sentiment_tag===f.sent) && (!f.imp||x.importance_level===f.imp) &&
     (!f.kw||(x.news_title+x.news_content+x.target_sectors.join('')).toLowerCase().includes(f.kw.toLowerCase()))
@@ -2102,9 +2110,16 @@ function marketList(d){
       <select id="mkImp" onchange="window._mkF.imp=this.value;renderMarket()" style="flex:1;min-width:90px;padding:8px;border:1px solid #e6e6e6;border-radius:8px;font-size:13px"><option value="">全等级</option><option ${f.imp==='heavy'?'selected':''} value="heavy">重磅</option><option ${f.imp==='normal'?'selected':''} value="normal">普通</option><option ${f.imp==='rumor'?'selected':''} value="rumor">传闻</option></select>
     </div>
     <input id="mkKw" placeholder="关键词搜索资讯库…" value="${f.kw}" oninput="window._mkF.kw=this.value" onkeydown="if(event.key==='Enter')renderMarket()" style="width:100%;padding:9px;margin-top:8px;border:1px solid #e6e6e6;border-radius:8px;font-size:13px"/></div>`;
-  if(!items.length) return filt+`<div class="empty"><div class="big">📊</div>还没有资讯。点下方「录入资讯」或在对话里说「新增资讯：...」</div>`;
+  // 关注板块过滤提示条
+  const followBar=follow.length?`<div class="small" style="background:#eef6ff;color:#1a4f8b;padding:9px 12px;border-radius:10px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>📌 已按关注板块 <b>${follow.join('、')}</b> 过滤：全量 ${allActive.length} 条 → 命中 ${items.length} 条</span><span style="cursor:pointer;color:#2b7de9;text-decoration:underline;white-space:nowrap" onclick="marketSectorConfig()">调整板块</span></div>`:'';
+  if(!items.length){
+    if(follow.length && allActive.length){
+      return filt+followBar+`<div class="empty"><div class="big">🎯</div>关注板块「${follow.join('、')}」下暂无匹配资讯。<div class="small muted mt">全量已收录 ${allActive.length} 条，可<a style="color:var(--c-primary);cursor:pointer" onclick="marketSectorConfig()">调整关注板块</a>或在「录入资讯」手动添加。</div></div>`;
+    }
+    return filt+`<div class="empty"><div class="big">📊</div>还没有资讯。点下方「录入资讯」或在对话里说「新增资讯：...」</div>`;
+  }
   const secBar=secF?`<div class="small" style="margin:6px 0 4px;color:#2b7de9" onclick="window._mkSec='';renderMarket()">‹ 返回板块建议（${secF}）</div>`:'';
-  return filt+secBar+`<div class="grid2" style="margin:10px 0"><div class="stat"><div class="k">收录资讯</div><div class="v">${items.length}<small> 条</small></div></div><div class="stat"><div class="k">利好/利空/中性</div><div class="v" style="font-size:17px">${cnt.bull}/<span style="color:var(--c-red)">${cnt.bear}</span>/${cnt.neutral}</div></div></div><div class="list">${filtered.map(x=>mkCard(x)).join('')}</div>`;
+  return filt+followBar+secBar+`<div class="grid2" style="margin:10px 0"><div class="stat"><div class="k">收录资讯</div><div class="v">${items.length}<small> 条</small></div></div><div class="stat"><div class="k">利好/利空/中性</div><div class="v" style="font-size:17px">${cnt.bull}/<span style="color:var(--c-red)">${cnt.bear}</span>/${cnt.neutral}</div></div></div><div class="list">${filtered.map(x=>mkCard(x)).join('')}</div>`;
 }
 function mkCard(x){
   const s=x.sentiment_tag, im=x.importance_level;
@@ -2509,8 +2524,15 @@ function editAI(){ const s=DB.data.settings; UI.openForm('配置 AI API',[{key:'
 function editNet(){ const s=DB.data.settings; UI.openForm('配置联网抓取端点',[{key:'endpoint',label:'抓取服务地址',type:'text',placeholder:'http://localhost:3001/api/topics',value:s.net.endpoint},{key:'auto',label:'打开App时自动联网刷新',type:'seg',options:['否','是'],value:s.net.auto?'是':'否'}],v=>{ s.net.endpoint=v.endpoint.trim(); s.net.auto=v.auto==='是'; DB.save(); toast('已保存'); if(s.net.endpoint) refreshTopicsNet(); go('support/settings'); }); }
 const NET_INDUSTRIES=[{key:'beauty',label:'美妆穿搭'},{key:'office',label:'职场办公'},{key:'finance',label:'财经理财'},{key:'knowledge',label:'知识科普'},{key:'food',label:'美食探店'},{key:'travel',label:'旅游'},{key:'parent',label:'育儿亲子'},{key:'fitness',label:'健身减脂'}];
 function netIndustryLabels(v){ const arr=(v||'').split(',').map(s=>s.trim()).filter(Boolean); if(!arr.length) return '通用'; return arr.map(k=>{ const o=NET_INDUSTRIES.find(x=>x.key===k); return o?o.label:k; }).join('、'); }
-function netToggleIndustry(k){ const s=DB.data.settings.net; const arr=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const i=arr.indexOf(k); if(i>=0) arr.splice(i,1); else arr.push(k); s.industry=arr.join(','); DB.save(); }
-function editNetIndustry(){ const s=DB.data.settings.net; const sel=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const body=`<div class="small muted mb">勾选你做内容的主要领域，热点选题会按这些领域生成专属「跟上做法/二改方法」（可多选，列表在领域间轮换）：</div><div class="list">${NET_INDUSTRIES.map(o=>`<div class="li" style="cursor:pointer" onclick="netToggleIndustry('${o.key}');editNetIndustry()"><span class="main"><div class="title">${o.label}</div></span><span class="right">${sel.includes(o.key)?'✅':'⬜'}</span></div>`).join('')}</div><div class="btn ghost mt" onclick="if(DB.data.settings.net.endpoint) refreshTopicsNet(); UI.closeSheet(); go('support/settings')">完成并刷新</div>`; UI.openSheet('配置内容领域', body, null, {}); }
+function netToggleIndustry(k){ const s=DB.data.settings.net; const arr=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const i=arr.indexOf(k); if(i>=0) arr.splice(i,1); else arr.push(k); s.industry=arr.join(','); DB.save();
+  // 仅更新该行右侧勾选图标，不再重建 sheet（避免每次勾选都重新弹出）
+  const mark=document.querySelector(`#netIndList .li[data-ind="${k}"] [data-mark]`);
+  if(mark) mark.textContent = arr.includes(k) ? '✅' : '⬜';
+}
+function editNetIndustry(){ const s=DB.data.settings.net; const sel=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const body=`<div class="small muted mb">勾选你做内容的主要领域，热点选题会按这些领域生成专属「跟上做法/二改方法」（可多选，列表在领域间轮换）：</div><div class="list" id="netIndList">${NET_INDUSTRIES.map(o=>`<div class="li" data-ind="${o.key}" style="cursor:pointer" onclick="netToggleIndustry('${o.key}')"><span class="main"><div class="title">${o.label}</div></span><span class="right" data-mark>${sel.includes(o.key)?'✅':'⬜'}</span></div>`).join('')}</div><div class="btn ghost mt" onclick="if(DB.data.settings.net.endpoint) refreshTopicsNet(); UI.closeSheet(); go('support/settings')">完成并刷新</div>`;
+  UI.openSheet('配置内容领域', body, null, {});
+}
 function editMarketApi(){ const s=DB.data.settings; UI.openForm('配置理财趋势资讯端点',[{key:'marketApi',label:'市场资讯服务地址',type:'text',placeholder:'http://localhost:3001/api/market-news',value:s.marketApi}],v=>{ s.marketApi=v.marketApi.trim(); DB.save(); toast('已保存'); if(s.marketApi) marketFetchNet(); go('support/settings'); }); }
 function editAIProxy(){ const s=DB.data.settings; UI.openForm('配置 AI 代理地址',[{key:'aiProxy',label:'代理服务地址',type:'text',placeholder:'https://你的后端/api/ai',value:s.aiProxy}],v=>{ s.aiProxy=v.aiProxy.trim(); DB.save(); toast('已保存'); go('support/settings'); }); }
 /* ============ 0.1 提醒与日程中心 ============ */
