@@ -692,22 +692,6 @@ const PMP_ROADMAP = [
  '产品经理角色与能力模型','竞品分析与拆解方法','PRD 产品需求文档撰写','用户调研与访谈技巧','用户画像与用户旅程地图',
  '需求收集与优先级排序 KANO/RICE','产品原型设计 Axure/Figma','数据指标设计与埋点','A/B 测试与实验设计','MVP 最小可行性产品设计','产品上线与项目复盘','产品迭代与需求池管理'
 ];
-const DOUYIN_BANK = [
- {t:'沉浸式回家 vlog',heat:'高',follow:'固定机位记录真实回家动线，突出治愈细节与烟火气',remake:'换成你的职业/城市版本，保留固定机位与慢节奏'},
- {t:'反转剧情短剧',heat:'高',follow:'前 3 秒设悬念，结尾神反转，钩子要强',remake:'换人物关系或场景，保留反转结构'},
- {t:'知识科普干货',heat:'中',follow:'一个知识点讲透，字幕标重点，结尾留互动问句',remake:'用你的专业领域做同类型科普'},
- {t:'好物测评种草',heat:'高',follow:'真实使用+客观优缺点，价格透明',remake:'同品类不同价位横评，做选购指南'},
- {t:'情感共鸣独白',heat:'高',follow:'戳中某类人群的真实情绪，第一人称口播',remake:'换视角，如父母/孩子/异地恋'},
- {t:'解压治愈 ASMR',heat:'中',follow:'洗地毯/切肥皂/整理，突出声音与画面',remake:'拍你的解压爱好，保留白噪音'},
- {t:'挑战类 30 天打卡',heat:'中',follow:'连续打卡制造追看，每日有微小变化',remake:'你的习惯挑战，如早起/读书/减脂'},
- {t:'本土文化非遗',heat:'中',follow:'地方特色易获流量扶持，讲解+展示',remake:'你家乡的文化或手艺'},
- {t:'宠物日常',heat:'高',follow:'萌宠+拟人台词，记录真实趣事',remake:'你家宠物日记，固定角色人设'},
- {t:'健身减脂跟练',heat:'高',follow:'居家无器械，跟练节奏清晰可坚持',remake:'你的训练计划，分部位系列化'},
- {t:'反常识冷知识',heat:'中',follow:'颠覆认知的开头，结尾给依据',remake:'你行业的冷知识或误区'},
- {t:'职场干货避坑',heat:'中',follow:'打工人共鸣，给可落地方法',remake:'你岗位的真实经验与踩坑'},
- {t:'低成本美食',heat:'高',follow:'家常菜快手做法，食材常见',remake:'你的拿手菜，做成系列'},
- {t:'AI 工具实测',heat:'高',follow:'演示一个具体 AI 用法，有前后对比',remake:'你常用的 AI 技巧，配实操'}
-];
 function bili(q){ return 'https://search.bilibili.com/all?keyword='+encodeURIComponent(q); }
 function baidu(q){ return 'https://www.baidu.com/s?wd='+encodeURIComponent(q); }
 function seedRoadmap(type){ if(type==='python') return PY_ROADMAP.map(t=>({t,url:bili(t+' 教程'),min:40})); if(type==='pmp') return PMP_ROADMAP.map(t=>({t,url:bili('产品经理 '+t),min:30})); return []; }
@@ -890,23 +874,19 @@ function ensureIeltsDaily(){
   sd.ielts.dailyDate=t; sd.ielts.items=items; DB.save();
 }
 function ensureHotDaily(){
+  // 已删除「内置抖音爆款库」：不再生成本地种子。联网爆款由 refreshHotNet 独立管理。
   const h=DB.data.hot; const t=U.today();
-  if(h.daily.date===t && h.daily.items.length) return;
-  const n=DOUYIN_BANK.length; const start=(parseInt(t.replace(/-/g,''),10)||0)%n;
-  const items=[]; for(let i=0;i<Math.min(8,n);i++){ const b=DOUYIN_BANK[(start+i)%n]; items.push({id:U.uid(),title:b.t,heat:b.heat,follow:b.follow,remake:b.remake,url:'https://www.douyin.com/search/'+encodeURIComponent(b.t),done:false}); }
-  h.daily.date=t; h.daily.items=items; DB.save();
+  if(h.daily.date===t) return;
+  h.daily.date=t; h.daily.items=[]; DB.save();
 }
 function ensureDailyContent(){ ensureStudyPlans(); ensureHotDaily(); }
 function toggleIelts(){ const ie=DB.data.study.ielts; ie.enabled=!ie.enabled; if(ie.enabled) ensureIeltsDaily(); DB.save(); toast(ie.enabled?'已开启雅思口语跟读':'已关闭'); renderStudy(); }
 function toggleIeltsItem(i){ const it=DB.data.study.ielts.items[i]; if(it){ it.done=!it.done; DB.save(); renderStudy(); } }
 function refreshIelts(){ DB.data.study.ielts.dailyDate=''; ensureIeltsDaily(); toast('已重新生成今日跟读'); renderStudy(); }
 function refreshHot(){
-  if(DB.data.settings.net.endpoint){
-    if(DB.data.hot.net&&DB.data.hot.net.all&&DB.data.hot.net.all.length) refreshHotNet(true);
-    else refreshHotNet(false);
-    return;
-  }
-  DB.data.hot.daily.date=''; ensureHotDaily(); toast('已换一批爆款（本地）'); renderHot();
+  if(DB.data.settings.net.endpoint){ refreshHotNet(false); return; }
+  toast('未配置联网端点，去「设置 → 联网抓取」配置后联网拉取爆款 🔧');
+  renderHot();
 }
 function roadmapSheet(type){ const rm=DB.data.study.roadmap[type]; if(!rm) return; const body=`<div class="small" style="white-space:pre-wrap;line-height:1.8">${rm.nodes.map((nn,i)=>`${i<rm.idx?'✅':'⬜'} ${nn.t}\n   🔗 ${nn.url}`).join('\n')}</div><div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`; UI.openSheet(rm.name+' 路线图',body); }
 
@@ -1110,24 +1090,38 @@ const AI = {
   async _llmOrFallback(text){
     const s=DB.data.settings;
     const messages=[{role:'system',content:'你是个人自律助手的协作AI，用简洁中文回答，适配手机窄屏。'},{role:'user',content:text}];
-    // 优先走后端 AI 代理：规避浏览器 CORS，Key 可放后端 env，手机端零配置也能用
+    // 1) 优先走后端 AI 代理：规避浏览器 CORS，Key 可放后端 env，手机端零配置也能用
     if(s.aiProxy){
       try{
         const res=await fetch(s.aiProxy,{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({messages,model:s.apiModel||'doubao-seed-1-6-250615',apiBase:s.apiBase,apiKey:s.apiKey,temperature:0.7})});
-        const j=await res.json(); if(j.choices&&j.choices[0]) return j.choices[0].message.content.trim();
-        if(j.error) throw new Error(j.error);
-      }catch(e){ /* 代理失败，尝试直连或回退 */ }
+        const txt=await res.text();
+        let j; try{ j=JSON.parse(txt); }catch(_){ /* 响应非 JSON */ }
+        if(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content){
+          return j.choices[0].message.content.trim();
+        }
+        // 把后端错误原样带回去，给出真实诊断线索（之前静默吞错让用户以为"已配"）
+        const errDetail = (j && j.error) ? String(j.error).slice(0,300) : ('HTTP '+res.status+' · '+(txt||'<空响应>').slice(0,200));
+        return '❌ AI 代理「'+s.aiProxy+'」调用失败：'+errDetail+'。\n\n排查：①后端是否正常（Railway 是否在运行）；②后端 env 是否配了 ARK_API_KEY；③地址是否多了空格或路径写错。';
+      }catch(e){
+        return '❌ AI 代理「'+s.aiProxy+'」网络异常：'+(e&&e.message||e)+'。\n\n排查：手机是否能访问该地址（外网），或后端是否允许跨域。';
+      }
     }
-    // 直连（本地 file:// 调试，需服务商允许浏览器跨域）
+    // 2) 直连（本地 file:// 调试，需服务商允许浏览器跨域）
     if(s.apiKey && s.apiBase){
       try{
         const res=await fetch(s.apiBase,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+s.apiKey},
           body:JSON.stringify({model:s.apiModel||'gpt-3.5-turbo',messages,temperature:0.7})});
-        const j=await res.json(); if(j.choices&&j.choices[0]) return j.choices[0].message.content.trim();
-      }catch(e){ /* 回退本地 */ }
+        const j=await res.json();
+        if(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content){
+          return j.choices[0].message.content.trim();
+        }
+        return '❌ 直连「'+s.apiBase+'」失败：HTTP '+res.status+' '+(j&&j.error?String(j.error).slice(0,200):'').trim();
+      }catch(e){
+        return '❌ 直连「'+s.apiBase+'」网络异常：'+(e&&e.message||e)+'。浏览器直连经常被 CORS 拦截，建议改用后端代理。';
+      }
     }
-    return '我暂时只理解具体指令（如「记录早餐…」「记体重62.5」「记录副业收入1800」「保存灵感：…」）。开启「我的→AI设置」填写 API 或配置 AI 代理地址后我可以做更复杂的生成与对话 💡';
+    return '💡 你目前还没配置 AI 代理或 API Key，目前只能识别「记录早餐/记体重/保存灵感」这类具体指令，无法回答「冬瓜热量多少」这类开放问题。\n\n去「设置 → AI 设置 → AI 代理地址」填写后端地址（推荐）或直接填 API Base+Key。';
   }
 };
 /* ============ UI 框架：路由 / 导航 / 表单弹层 ============ */
@@ -1295,7 +1289,12 @@ function renderChat(){
 async function sendChat(){
   const inp=U.$('#cin'); const v=inp.value.trim(); if(!v) return; inp.value='';
   DB.data.chat=DB.data.chat||[]; DB.data.chat.push({role:'me',text:v});
-  const res=await AI.handle(v);
+  let res;
+  try{
+    res=await AI.handle(v);
+  }catch(e){
+    res={reply:'❌ AI 内部异常：'+(e&&e.message||String(e))+'。请刷新页面或截图反馈给开发者 💡', quick:null, goto:null};
+  }
   DB.data.chat.push({role:'ai',text:res.reply, quick:res.quick});
   DB.save(); renderChat();
   if(res.goto) setTimeout(()=>go(res.goto),50);
@@ -1662,20 +1661,16 @@ function renderHot(){
   const netAll=(DB.data.hot.net&&DB.data.hot.net.all)||[];
   const netIdx=(DB.data.hot.net&&DB.data.hot.net.idx)||0;
   const netShown=netConf?netAll.slice(netIdx,netIdx+8):[];
-  const daily=DB.data.hot.daily.items;
-  const manual=DB.data.hot.items.slice().reverse();
-  // 联网爆款（抖音/小红书真实热点）—— 已配置端点时独立成区
+  // 联网爆款（抖音/小红书真实热点）—— 已删除「内置抖音爆款库」本地兜底
   const netSec = netConf ? (netShown.length?`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网爆款（抖音/小红书真实热点）</span><span class="more">${U.today()}</span></div>
     <div class="list">${netShown.map(h=>hotCard(h)).join('')}</div>
     <div class="btn ghost mt" onclick="refreshHotNet(true)">🔄 换一批爆款</div></div>`
     :`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网爆款（抖音/小红书真实热点）</span></div><div class="empty"><div class="big">🌐</div>点下方按钮联网获取抖音/小红书最新爆款</div><div class="btn ghost mt" onclick="refreshHotNet(false)">🌐 联网获取爆款</div></div>`)
-    : `<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网爆款（抖音/小红书）</span></div><div class="small muted" style="padding:10px;line-height:1.6">未配置联网端点。去「设置 → 联网抓取」填写抓取服务地址后，可拉取抖音/小红书实时爆款。当前显示内置爆款库。</div></div>`;
-  // 内置爆款库（本地 DOUYIN_BANK）—— 离线兜底
-  const localSec = daily.length?`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>📋 内置抖音爆款库</span></div>
-    <div class="list">${daily.map(h=>hotCard(h)).join('')}</div>${netConf?'':`<div class="btn ghost mt" onclick="refreshHot()">🔄 换一批爆款</div>`}</div>`:'';
-  UI.mount(`<div class="page-head"><h1>爆款&二创</h1><span class="sub">拆解/脚本</span></div>${netSec}${localSec}
+    : `<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网爆款（抖音/小红书）</span></div><div class="small muted" style="padding:10px;line-height:1.6">未配置联网端点。去「设置 → 联网抓取」填写抓取服务地址后，可拉取抖音/小红书实时爆款。</div></div>`;
+  const manual=DB.data.hot.items.slice().reverse();
+  UI.mount(`<div class="page-head"><h1>爆款&二创</h1><span class="sub">拆解/脚本</span></div>${netSec}
     <div class="btn ghost mb" onclick="addHot()">➕ 收录热点</div>
-    ${manual.length?`<div class="list">${manual.map(h=>`<div class="li" onclick="hotDetail('${h.id}')"><span class="main"><div class="title">${h.title}</div><div class="desc">${h.platform||''} ${h.heat?('· 热度'+h.heat):''} ${h.scriptDone?'· ✅已出片':''}</div></span><span class="pill ${h.scriptDone?'green':'orange'}">${h.scriptDone?'已制作':'待二创'}</span><button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="event.stopPropagation();delHot('${h.id}')">✕</button></div>`).join('')}</div>`:'<div class="empty"><div class="big">🔥</div>对话中说「解析这条视频，给我3条二创思路」</div>'}`);
+    ${manual.length?`<div class="list">${manual.map(h=>`<div class="li" onclick="hotDetail('${h.id}')"><span class="main"><div class="title">${h.title}</div><div class="desc">${h.platform||''} ${h.heat?('· 热度'+h.heat):''} ${h.scriptDone?'· ✅已出片':''}</div></span><span class="pill ${h.scriptDone?'green':'orange'}">${h.scriptDone?'已制作':'待二创'}</span><button class="icon-btn" style="width:30px;height:30px;font-size:15px\" onclick="event.stopPropagation();delHot('${h.id}')">✕</button></div>`).join('')}</div>`:'<div class="empty"><div class="big">🔥</div>对话中说「解析这条视频，给我3条二创思路」</div>'}`);
 }
 function addHot(){ UI.openForm('收录热点',[{key:'title',label:'视频标题',type:'text'},{key:'url',label:'来源链接',type:'text'},{key:'platform',label:'平台',type:'select',options:['抖音','小红书','B站','视频号','YouTube','其他'],value:'抖音'},{key:'heat',label:'热度等级',type:'seg',options:['高','中','低'],value:'中'}],v=>{ DB.data.hot.items.push({id:U.uid(),title:v.title,url:v.url,platform:v.platform,heat:v.heat,breakdown:'',scripts:[],scriptDone:false,created:U.today()}); Store.emit('hot'); toast('已收录'); go('m/hot'); }); }
 function delHot(id){ if(!confirm('删除这条热点？')) return; DB.data.hot.items=DB.data.hot.items.filter(x=>x.id!==id); Store.emit('hot'); toast('已删除'); go('m/hot'); }
