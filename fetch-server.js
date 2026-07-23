@@ -11,6 +11,26 @@
 const http = require('http');
 const PORT = process.env.PORT || 3001;
 
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+
+async function fetchJSON(url, referer){
+  const r = await fetch(url, {
+    headers: { 'User-Agent': UA, 'Accept': 'application/json, text/plain, */*', 'Referer': referer || 'https://www.toutiao.com/' }
+  });
+  return r.json();
+}
+
+function classifyMarket(title, content){
+  const t = (title + ' ' + content);
+  if (/LPR|货币|央行|降准|降息|利率|逆回购|MLF/.test(t)) return 'macro';
+  if (/半导体|芯片|AI|人工智能|算力|机器人/.test(t)) return 'industry';
+  if (/新能源|光伏|储能|电池|能源|算电/.test(t)) return 'industry';
+  if (/消费|零售|以旧换新/.test(t)) return 'industry';
+  if (/医药|创新药|基药/.test(t)) return 'industry';
+  if (/军工|航天/.test(t)) return 'industry';
+  return 'industry';
+}
+
 const DOUYIN = [
   {title:'26版西游记职场二创（白龙马行车记录仪视角）',url:'https://www.toutiao.com/a1871339928286340',heat:'高',follow:'用第一人称/行车记录仪视角拍职场一天，套用国民IP：唐僧=画饼领导、悟空=内卷员工、八戒=摸鱼、沙僧=老好人，主打打工人共鸣。',remake:'换成你行业的「师徒」人设（程序员版/教师版/销售版），讲你行业的真实职场梗，比泛职场段子更吸粉。'},
   {title:'叹气向上挑战（魔性BGM转旋律）',url:'https://www.toutiao.com/a1871339928286340',heat:'中',follow:'拍自己叹气被音效转成《特别的爱给特别的你》旋律的搞笑短片，零门槛翻拍。',remake:'结合你职业的「叹气名场面」（如改方案被毙/需求又变），做成系列反差搞笑。'},
@@ -52,17 +72,34 @@ function flatten(date){
 }
 
 async function liveFetch(date){
-  const url=process.env.HOT_API; if(!url) return null;
+  // 1) 若配置了 HOT_API 则用用户自定义源
+  const url=process.env.HOT_API;
+  if(url){
+    try{
+      const j=await fetchJSON(url+(url.includes('?')?'&':'?')+'date='+date);
+      let arr=Array.isArray(j)?j:(j.items||j.topics||null);
+      if(arr&&arr.length) return arr.map(x=>({
+        platform:x.platform||(/小红/.test(x.title||'')?'小红书':'抖音'),
+        title:x.title, url:x.url||'', heat:x.heat||'中',
+        follow:x.follow||x.way||'', remake:x.remake||x.tip||''
+      }));
+    }catch(e){ console.warn('[live fetch] HOT_API 失败，降级默认源：',e.message); }
+  }
+  // 2) 默认真实源：今日头条热榜（后端直连，无 CORS 问题）
   try{
-    const r=await fetch(url+(url.includes('?')?'&':'?')+'date='+date);
-    const j=await r.json();
-    let arr=Array.isArray(j)?j:(j.items||j.topics||null);
-    if(arr&&arr.length) return arr.map(x=>({
-      platform:x.platform||(/小红/.test(x.title||'')?'小红书':'抖音'),
-      title:x.title, url:x.url||'', heat:x.heat||'中',
-      follow:x.follow||x.way||'', remake:x.remake||x.tip||''
-    }));
-  }catch(e){ console.warn('[live fetch] 失败，降级内置种子：',e.message); }
+    const j=await fetchJSON('https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc','https://www.toutiao.com/');
+    const arr=j&&j.data;
+    if(Array.isArray(arr)&&arr.length){
+      return arr.filter(x=>x.Title).map((x,i)=>({
+        platform:'抖音',
+        title:x.Title,
+        url:x.Url||'',
+        heat: i<10?'高':(i<25?'中':'低'),
+        follow:'结合你的领域做延展解读/二创，比泛泛跟风更吸粉',
+        remake:'用你行业的视角拆解这条热点，给出可落地的跟拍或图文思路'
+      }));
+    }
+  }catch(e){ console.warn('[头条热榜] 失败，降级内置种子：',e.message); }
   return null;
 }
 
@@ -82,17 +119,36 @@ const MARKET_NEWS=[
   {news_title:'工信部：综合整治"内卷式"竞争，发布光伏等强制国标',news_content:'工信部加强内卷式竞争综合整治，发布光伏、智能网联汽车等领域强制性国家标准，电池制造行业PPI连续4个月同比上涨，碳酸锂等价格趋稳。',source_name:'央视网',source_url:'https://ysxw.cctv.cn/article.html?item_id=9432480170384526683',publish_date:'2026-07-20',category_type:'industry',target_sectors:['新能源'],authenticity:'media'}
 ];
 async function liveNews(date){
-  const url=process.env.NEWS_API; if(!url) return null;
+  // 1) 若配置了 NEWS_API 则用用户自定义源
+  const url=process.env.NEWS_API;
+  if(url){
+    try{
+      const j=await fetchJSON(url+(url.includes('?')?'&':'?')+'date='+date);
+      let arr=Array.isArray(j)?j:(j.items||j.news||null);
+      if(arr&&arr.length) return arr.map(x=>({
+        news_title:x.news_title||x.title, news_content:x.news_content||x.content||'',
+        source_name:x.source_name||x.source||'', source_url:x.source_url||x.url||'', publish_date:x.publish_date||x.date||date,
+        category_type:x.category_type||'industry', target_sectors:x.target_sectors||[], authenticity:x.authenticity||'media'
+      }));
+    }catch(e){ console.warn('[market live fetch] NEWS_API 失败，降级默认源：',e.message); }
+  }
+  // 2) 默认真实源：新浪财经滚动（后端直连，无 CORS 问题）
   try{
-    const r=await fetch(url+(url.includes('?')?'&':'?')+'date='+date);
-    const j=await r.json();
-    let arr=Array.isArray(j)?j:(j.items||j.news||null);
-    if(arr&&arr.length) return arr.map(x=>({
-      news_title:x.news_title||x.title, news_content:x.news_content||x.content||'',
-      source_name:x.source_name||x.source||'', source_url:x.source_url||x.url||'', publish_date:x.publish_date||x.date||date,
-      category_type:x.category_type||'industry', target_sectors:x.target_sectors||[], authenticity:x.authenticity||'media'
-    }));
-  }catch(e){ console.warn('[market live fetch] 失败，降级内置种子：',e.message); }
+    const j=await fetchJSON('https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2510&num=30&page=1','https://finance.sina.com.cn/');
+    const items=j&&j.result&&j.result.data;
+    if(Array.isArray(items)&&items.length){
+      return items.filter(x=>x.title).map(x=>({
+        news_title:x.title,
+        news_content:x.intro||x.summary||'',
+        source_name:x.media_name||'新浪财经',
+        source_url:x.url||x.wapurl||'',
+        publish_date: x.ctime? new Date(x.ctime*1000).toISOString().slice(0,10): date,
+        category_type:classifyMarket(x.title, x.intro||''),
+        target_sectors:[],
+        authenticity:'media'
+      }));
+    }
+  }catch(e){ console.warn('[新浪财经] 失败，降级内置种子：',e.message); }
   return null;
 }
 
