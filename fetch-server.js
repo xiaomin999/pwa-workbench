@@ -20,6 +20,91 @@ async function fetchJSON(url, referer){
   return r.json();
 }
 
+/* ============ 热点选题：按行业生成「跟上做法 / 二改方法」 ============ */
+const NET_INDUSTRIES = {
+  beauty:{label:'美妆穿搭',platform:'小红书',follow:[
+    '把「{t}」翻译成妆容灵感：做一期「{t} 氛围感妆容/换头对比」，用热点情绪带出你的风格解读，评论区引导晒同款。',
+    '蹭「{t}」做穿搭平替：拍「{t} 里的通勤/约会穿搭」三套，强调可复制、价格友好，结尾挂合集。',
+    '用「{t}」做护肤测评切入点：把它和「夏季防晒/熬夜急救/底妆服帖」绑定，做实测对比，真实比完美更吸粉。',
+    '把「{t}」做成变美挑战：发起「{t} 同款改造」7天打卡，每天一个妆容/穿搭知识点，拉连续关注。'
+  ],remake:[
+    '二改：把同一热点拆成「妆前vs妆后反差」「通勤平替」「氛围感同款」3条短视频，连续3天不同角度跟拍，吃满流量窗口。',
+    '二改：做成「{t} 同款挑战」图文，分「原图→你的版本」对比，带话题标签，引导粉丝投稿。',
+    '二改：用前后对比+字幕卡做信息密度高的短片，每条只讲一个妆容/穿搭知识点，方便收藏转发。',
+    '二改：拆成「避雷版/平价版/进阶版」三档，覆盖不同预算粉丝，评论区自然分层讨论。'
+  ]},
+  office:{label:'职场办公',platform:'抖音',follow:[
+    '用打工人视角蹭「{t}」：拍「职场人看 {t} 的真实反应」或「{t} 给打工人的3个提醒」，情绪共鸣+一句干货收尾。',
+    '把「{t}」做成职场生存选题：写「如果 {t} 发生在公司里」的反差段子，或「从 {t} 学到的职场道理」，引评论区共鸣。',
+    '用「{t}」切效率/副业角度：做「{t} 教会我的时间管理/搞钱思路」，给可照做的清单，收藏率更高。',
+    '把「{t}」译成向上管理教材：讲「遇到 {t} 这类事，怎么跟领导汇报/怎么留痕」，强实用。'
+  ],remake:[
+    '二改：做成「{t} 职场生存指南」口播，三段式「现象→原因→我能怎么做」，结尾抛职场选择题引互动。',
+    '二改：分上下集，上集讲热点梗、下集给职场行动清单，用「未完待续」拉关注与完播。',
+    '二改：做成图文卡片「{t} 里的5个职场真相」，每条配一句大白话，适合转发收藏。',
+    '二改：用「假如 {t} 是同事」拟人化短视频，反差幽默+职场道理，完播率更高。'
+  ]},
+  finance:{label:'财经理财',platform:'抖音',follow:[
+    '用理财视角拆解「{t}」：做「{t} 跟钱有什么关系」通俗解读，把专业词翻成大白话，引收藏。',
+    '把「{t}」做成家庭资产配置选题：讲它对你基金/存款/房贷的实际影响，给可照做的动作。',
+    '用「{t}」做避坑科普：哪些人会被波及、现在该加仓还是观望，给明确边界不荐股。'
+  ],remake:[
+    '二改：做成「一张图看懂 {t}」信息卡，配「普通人该怎么做」3条，强转发。',
+    '二改：用「假如 {t} 发生在你账户里」情景短剧，把抽象政策讲成钱的变动。',
+    '二改：拆成「是什么/为什么/关我啥事」三段口播，结尾引导关注持续更新。'
+  ]},
+  knowledge:{label:'知识科普',platform:'小红书',follow:[
+    '把「{t}」做成知识增量：用「你以为…其实…」的反差开头，给一个可核验的事实。',
+    '用「{t}」做信息差卡片：四条消息一页讲清，适合知识图文和素材，标题带信息差。',
+    '把「{t}」译成认知升级：讲它背后的一套思维模型，给人「恍然大悟」感。'
+  ],remake:[
+    '二改：做成「每日信息差」图文，正文事实先核验，建立可信人设。',
+    '二改：用「3分钟看懂 {t}」口播，配类比和例子，降低理解门槛。',
+    '二改：拆成「误区/真相/怎么做」三段，结尾抛一个思考题引评论。'
+  ]},
+  food:{label:'美食探店',platform:'抖音',follow:[
+    '把「{t}」做成探店由头：拍「{t} 期间去吃的店」或「{t} 同款美食复刻」，只写实测。',
+    '用「{t}」做城市美食地图：按区域/品类分集，长期可接本地商家。',
+    '把「{t}」译成减脂/放纵吃法：给「吃货也能控制」的方案，强共鸣。'
+  ],remake:[
+    '二改：做「跟着 {t} 吃一天」跟拍，价格和店铺只写实测，不虚标。',
+    '二改：复刻热点里的同款食物，分步教程+翻车彩蛋，完播率高。',
+    '二改：做成「{t} 城市美食清单」合集，按预算分档，方便收藏。'
+  ]},
+  travel:{label:'旅游',platform:'小红书',follow:[
+    '把「{t}」做成出行由头：拍「{t} 适合去哪/怎么玩」实用攻略，带具体路线。',
+    '用「{t}」做小城慢游：睡到自然醒走到哪吃到哪，避开特种兵式赶路。',
+    '把「{t}」译成省钱玩法：预算/交通/避坑一条龙，收藏率高。'
+  ],remake:[
+    '二改：做「车窗视角+沿途片段」慢旅行 vlog，情绪+风景双线。',
+    '二改：拆成「路线/预算/避坑」三篇，按月份更新，强实用。',
+    '二改：用「假如 {t} 是目的地」拟人化种草，反差有趣。'
+  ]},
+  parent:{label:'育儿亲子',platform:'小红书',follow:[
+    '用爸妈视角蹭「{t}」：讲「{t} 里能教给孩子的道理」或「带娃遇到 {t} 怎么办」。',
+    '把「{t}」做成育儿避坑：哪些做法伤娃、现在该怎么做，给明确边界。',
+    '用「{t}」做亲子互动：一个在家就能玩的小游戏/小实验，强收藏。'
+  ],remake:[
+    '二改：做成「带娃看 {t}」vlog，真实记录+一句育儿心得，引共鸣。',
+    '二改：拆成「误区/正确做法/小游戏」三段，结尾抛育儿选择题。',
+    '二改：用「假如 {t} 是孩子」拟人化，幽默讲育儿道理。'
+  ]},
+  fitness:{label:'健身减脂',platform:'抖音',follow:[
+    '把「{t}」做成健身由头：拍「{t} 期间的撸铁/跑步日常」或「{t} 同款动作跟练」。',
+    '用「{t}」做减脂 Day 打卡：记录可持续过程，少做极端承诺。',
+    '把「{t}」译成居家训练：无器械也能练的方案，强实用。'
+  ],remake:[
+    '二改：做「{t} 跟练」短视频，分步讲解+常见错误，收藏率高。',
+    '二改：拆成「热身/主攻/拉伸」三段，按周更新计划。',
+    '二改：用「前后对比」记录，真实饮食+运动，比「自律变瘦」易保存。'
+  ]},
+  general:{label:'通用',platform:'抖音',follow:['结合「{t}」做延展解读/二创，比泛泛跟风更吸粉。'],remake:['用你行业的视角拆解「{t}」，给出可落地的跟拍或图文思路。']}
+};
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return h; }
+function platformOf(ind){ const o=NET_INDUSTRIES[ind]; return o?o.platform:'抖音'; }
+function genFollow(title, ind){ const o=NET_INDUSTRIES[ind]; if(!o) return '结合「'+title+'」做延展解读/二创，比泛泛跟风更吸粉。'; const a=o.follow; return a[Math.abs(hashStr(title))%a.length].replace(/{t}/g,title); }
+function genRemake(title, ind){ const o=NET_INDUSTRIES[ind]; if(!o) return '用你行业的视角拆解「'+title+'」，给出可落地的跟拍或图文思路。'; const a=o.remake; return a[Math.abs(hashStr(title))%a.length].replace(/{t}/g,title); }
+
 function classifyMarket(title, content){
   const t = (title + ' ' + content);
   if (/LPR|货币|央行|降准|降息|利率|逆回购|MLF/.test(t)) return 'macro';
@@ -71,18 +156,23 @@ function flatten(date){
   ];
 }
 
-async function liveFetch(date){
+async function liveFetch(date, industry){
+  const inds=(industry||'').split(',').map(s=>s.trim()).filter(Boolean);
   // 1) 若配置了 HOT_API 则用用户自定义源
   const url=process.env.HOT_API;
   if(url){
     try{
-      const j=await fetchJSON(url+(url.includes('?')?'&':'?')+'date='+date);
+      const j=await fetchJSON(url+(url.includes('?')?'&':'?')+'date='+date+(inds.length?'&industry='+encodeURIComponent(industry):''));
       let arr=Array.isArray(j)?j:(j.items||j.topics||null);
-      if(arr&&arr.length) return arr.map(x=>({
-        platform:x.platform||(/小红/.test(x.title||'')?'小红书':'抖音'),
-        title:x.title, url:x.url||'', heat:x.heat||'中',
-        follow:x.follow||x.way||'', remake:x.remake||x.tip||''
-      }));
+      if(arr&&arr.length) return arr.map((x,i)=>{
+        const ind=inds.length?inds[i%inds.length]:'general';
+        return {
+          platform:platformOf(ind),
+          title:x.title, url:x.url||'', heat:x.heat||'中',
+          follow:x.follow||x.way||genFollow(x.title,ind),
+          remake:x.remake||x.tip||genRemake(x.title,ind)
+        };
+      });
     }catch(e){ console.warn('[live fetch] HOT_API 失败，降级默认源：',e.message); }
   }
   // 2) 默认真实源：今日头条热榜（后端直连，无 CORS 问题）
@@ -90,14 +180,18 @@ async function liveFetch(date){
     const j=await fetchJSON('https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc','https://www.toutiao.com/');
     const arr=j&&j.data;
     if(Array.isArray(arr)&&arr.length){
-      return arr.filter(x=>x.Title).map((x,i)=>({
-        platform:'抖音',
-        title:x.Title,
-        url:x.Url||'',
-        heat: i<10?'高':(i<25?'中':'低'),
-        follow:'结合你的领域做延展解读/二创，比泛泛跟风更吸粉',
-        remake:'用你行业的视角拆解这条热点，给出可落地的跟拍或图文思路'
-      }));
+      return arr.filter(x=>x.Title).map((x,i)=>{
+        const ind=inds.length?inds[i%inds.length]:'general';
+        const heat= i<10?'高':(i<25?'中':'低');
+        return {
+          platform:platformOf(ind),
+          title:x.Title,
+          url:x.Url||'',
+          heat,
+          follow:genFollow(x.Title,ind),
+          remake:genRemake(x.Title,ind)
+        };
+      });
     }
   }catch(e){ console.warn('[头条热榜] 失败，降级内置种子：',e.message); }
   return null;
@@ -158,8 +252,10 @@ http.createServer(async (req,res)=>{
   res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
   if(req.method==='OPTIONS'){ res.statusCode=204; return res.end(); }
   if(req.url.startsWith('/api/topics')){
-    const date=new URL(req.url,'http://localhost').searchParams.get('date')||new Date().toISOString().slice(0,10);
-    let items=await liveFetch(date); let source='live';
+    const u=new URL(req.url,'http://localhost');
+    const date=u.searchParams.get('date')||new Date().toISOString().slice(0,10);
+    const industry=u.searchParams.get('industry')||process.env.INDUSTRY||'';
+    let items=await liveFetch(date, industry); let source='live';
     if(!items){ items=flatten(date); source='builtin'; }
     res.setHeader('Content-Type','application/json;charset=utf-8');
     return res.end(JSON.stringify({source,date,items}));
