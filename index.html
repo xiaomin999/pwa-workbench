@@ -1547,10 +1547,15 @@ function renderIdeas(){
       <div class="small muted mt">跟上做法：${U.escape(h.follow)}</div>
       <div class="small muted">二改方法：${U.escape(h.remake)}</div></span>
       <div style="margin-top:8px"><button class="btn soft sm" onclick="saveTopic('${h.id}')" style="padding:6px 12px;background:#eef6ff;color:#2b7de9;border:none;border-radius:8px;font-size:13px">＋ 存为灵感</button></div></div>`).join('')}</div>
-    <div class="btn ghost mt" onclick="refreshTopicsLocal()">🔄 换一批选题</div>${DB.data.settings.net.endpoint?`<div class="btn ghost mt" onclick="refreshTopicsNet()">🌐 联网刷新真实热点</div>`:''}</div>`:'';
+    <div class="small muted" style="margin-top:6px;text-align:center">💡 换一批 / 联网刷新 按钮已移到本模块顶部</div></div>`:'';
   const items=DB.data.ideas.items.slice().reverse();
   const st={draft:'草稿',todo:'待完善',ready:'可用选题',made:'已制作',dead:'废弃'};
+  const topRefresh=`<div style="display:flex;gap:8px;margin:0 0 10px">
+    <button class="btn ghost" style="flex:1" onclick="refreshTopicsLocal()">🔄 换一批选题</button>
+    ${DB.data.settings.net.endpoint?`<button class="btn ghost" style="flex:1" onclick="refreshTopicsNet()">🌐 联网刷新真实热点</button>`:''}
+  </div>`;
   UI.mount(`<div class="page-head"><h1>选题&灵感</h1><span class="sub">每日热点+灵感库</span></div>
+    ${topRefresh}
     <div style="display:flex;gap:8px;margin:0 0 10px">${ptab}</div>
     ${dailySec}
     <div class="btn ghost mb" onclick="addIdea()">➕ 记我的灵感</div>
@@ -2034,15 +2039,29 @@ function marketSectorNews(sec){ window._mkSec=sec; window._mkTab='list'; renderM
 function marketSectorConfig(){
   const all=Object.keys(MarketAI.SECTORS); const follow=DB.data.market.follow;
   const body=`<div class="small muted mb">勾选关注的板块，板块建议与汇总只覆盖这些板块：</div>
-    <div class="list">${all.map(s=>`<div class="li" style="cursor:pointer" onclick="marketToggleSector('${s}');marketSectorConfig()"><span class="main"><div class="title">${s}</div></span><span class="right">${follow.includes(s)?'✅':'⬜'}</span></div>`).join('')}</div>
-    <div class="btn ghost mt" onclick="UI.closeSheet()">完成</div>`;
+    <div class="list" id="sectorSheetList">${all.map(s=>`<div class="li" data-sec="${s}" style="cursor:pointer" onclick="marketToggleSector('${s}')"><span class="main"><div class="title">${s}</div></span><span class="right" data-mark>${follow.includes(s)?'✅':'⬜'}</span></div>`).join('')}</div>
+    <div class="btn ghost mt" onclick="renderMarket();UI.closeSheet()">完成</div>`;
   UI.openSheet('选择关注板块', body, null, {});
 }
-function marketToggleSector(s){ const f=DB.data.market.follow; const i=f.indexOf(s); if(i>=0) f.splice(i,1); else f.push(s); DB.save(); }
+function marketToggleSector(s){
+  const f=DB.data.market.follow; const i=f.indexOf(s);
+  if(i>=0) f.splice(i,1); else f.push(s);
+  DB.save();
+  // 仅更新该行右侧勾选图标，不再重建 sheet（避免每次勾选都重新弹出）
+  const mark=document.querySelector(`#sectorSheetList .li[data-sec="${s}"] [data-mark]`);
+  if(mark) mark.textContent = f.includes(s) ? '✅' : '⬜';
+}
 function marketAutoToggle(){ DB.data.market.auto=!DB.data.market.auto; DB.save(); if(DB.data.market.auto) marketFetchNet(); renderMarket(); }
 function marketFetchNet(silent){
-  const ep=DB.data.settings.marketApi || (window.location.protocol.indexOf('http')===0?'/api/market-news':'');
-  if(!ep){ if(!silent) toast('未配置联网端点，已使用内置真实种子。可在「设置→理财趋势资讯端点」配置 /api/market-news。'); return; }
+  // 智能 fallback：优先用 settings.marketApi；若未配但已配选题端点(BASE/api/topics)，自动复用 BASE/api/market-news
+  let ep=DB.data.settings.marketApi;
+  if(!ep){
+    const netEp=DB.data.settings.net.endpoint||'';
+    const m=netEp.match(/^(https?:\/\/[^/]+)/);
+    if(m) ep=m[1]+'/api/market-news';
+    else if(window.location.protocol.indexOf('http')===0) ep='/api/market-news';
+  }
+  if(!ep){ if(!silent) toast('请到「设置→理财趋势资讯端点」配置 /api/market-news（如已填选题端点会自动复用）。'); return; }
   if(!silent) toast('正在联网检索最新资讯…');
   fetch(ep+(ep.indexOf('?')>=0?'&':'?')+'date='+encodeURIComponent(U.today()))
     .then(r=>r.json())
@@ -2059,11 +2078,12 @@ function marketFetchNet(silent){
         MarketAI.analyze(it); DB.data.market.items.push(it); added++;
       });
       DB.data.market.lastFetch=U.today(); DB.save();
-      if(!silent) toast(added?('已联网检索并新增 '+added+' 条资讯 ✅'):'已是最新（无新增）');
+      if(!silent) toast(added?('已联网检索并新增 '+added+' 条资讯，下方「收录资讯」已同步更新 ✅'):'已是最新（无新增）');
       else if(added) toast('自动联网检索新增 '+added+' 条');
-      if(['list','advice',undefined].includes(window._mkTab)) renderMarket();
+      // 同步刷新「收录资讯」区：list tab 必刷新，advice tab 顺带刷新；collect/week 不打断用户当前视图
+      if(curRoute==='m/market') renderMarket();
     })
-    .catch(e=>{ if(!silent) toast('联网检索失败：'+(ep.charAt(0)==='/'?'需通过 fetch-server.js 运行本页':'检查端点地址')); });
+    .catch(e=>{ if(silent) return; toast('联网检索失败：端点 '+ep+' 无法访问。请到「设置→理财趋势资讯端点」检查地址，或确认后端服务（fetch-server.js）已启动。'); });
 }
 
 function marketList(d){
@@ -2655,7 +2675,7 @@ async function refreshTopicsNet(silent){
     const arr=items.map(x=>({...x,id:U.uid()}));
     DB.data.ideas.daily={date:U.today(),items:arr,platform:'all'}; DB.save();
     if(!silent) toast('已联网更新 '+arr.length+' 条真实热点 🌐');
-    if(!location.hash || location.hash==='#m/ideas') renderIdeas();
+    if(curRoute==='m/ideas') renderIdeas();
   } else if(!silent) toast('联网抓取失败（检查端点或抓取服务是否运行）');
 }
 function saveTopic(id){
