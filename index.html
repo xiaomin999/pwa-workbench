@@ -2840,9 +2840,31 @@ function boot(){
   if(!DB.data.ideas.history) DB.data.ideas.history=[];
   markOverdue(); ensureDailyContent(); ensureIdeasDaily(); renderSidebar(); renderNav(); go('home');
   setInterval(checkReminders,60000);
-  // PWA: 注册 Service Worker（仅 http(s) 环境下生效，file:// 不注册）
+  // PWA: 注册 Service Worker，并在检测到新版本时自动刷新（仅 http(s) 下生效，file:// 不注册）
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.js').then(function(){}).catch(function(){});
+    var _pwaReloading=false;
+    function _pwaApplyUpdate(reg){
+      if(typeof toast==='function'){ toast('已更新到新版本 ✨'); }
+      setTimeout(function(){
+        if(_pwaReloading) return; _pwaReloading=true;
+        try{ if(reg&&reg.waiting) reg.waiting.postMessage('skipWaiting'); }catch(e){}
+        location.reload();
+      }, 1200);
+    }
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      if(reg&&reg.waiting){ _pwaApplyUpdate(reg); return; }
+      if(reg){
+        reg.addEventListener('updatefound', function(){
+          var nw=reg.installing;
+          if(nw) nw.addEventListener('statechange', function(){
+            if(nw.state==='installed' && navigator.serviceWorker.controller){ _pwaApplyUpdate(reg); }
+          });
+        });
+      }
+    }).catch(function(){});
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(_pwaReloading) return; _pwaReloading=true; location.reload();
+    });
   }
 }
 if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded',boot);
