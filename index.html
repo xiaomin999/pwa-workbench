@@ -242,7 +242,8 @@ body.sb-collapsed .sb-top{justify-content:center;padding:16px 0;}
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="小助理" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" href="icon-192.png" type="image/png" />
 </head>
 <body>
 <div id="app">
@@ -2609,6 +2610,10 @@ function renderSettings(){
       <div class="kv"><span class="k">资讯端点</span><span>${s.marketApi?'已配置':'未配置'}</span></div>
       <button class="btn ghost mt" onclick="editMarketApi()">配置市场资讯端点</button>
       <button class="btn ghost mt" onclick="marketFetchNet()">🌐 立即联网检索资讯</button></div>
+    <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📱 安装到手机</span></div>
+      <div class="small muted mb">把小助理安装到手机桌面，像原生 App 一样全屏打开、随时使用，还能收到版本更新。</div>
+      <button class="btn ghost mt" id="btnInstall" onclick="installApp()">📲 安装到主屏幕</button>
+      <div class="small muted mt" id="installTip">安卓：点浏览器菜单「安装应用 / 添加到主屏幕」。苹果：用 Safari 打开 → 分享 →「添加到主屏幕」。</div></div>
     <div class="note">🔒 数据仅存于本机浏览器（localStorage），不上传任何服务器。</div>`);
 }
 function editAI(){ const s=DB.data.settings; UI.openForm('配置 AI API',[{key:'apiBase',label:'API Base URL',type:'text',placeholder:'https://api.openai.com/v1/chat/completions',value:s.apiBase},{key:'apiKey',label:'API Key',type:'password',value:s.apiKey},{key:'apiModel',label:'模型名',type:'text',value:s.apiModel}],v=>{ s.apiBase=v.apiBase; s.apiKey=v.apiKey; s.apiModel=v.apiModel; DB.save(); toast('已保存'); go('support/settings'); }); }
@@ -2840,6 +2845,10 @@ function boot(){
   if(!DB.data.ideas.history) DB.data.ideas.history=[];
   markOverdue(); ensureDailyContent(); ensureIdeasDaily(); renderSidebar(); renderNav(); go('home');
   setInterval(checkReminders,60000);
+  // PWA 安装：捕获 beforeinstallprompt，提供「安装到主屏幕」按钮
+  window._deferredPrompt=null;
+  window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); window._deferredPrompt=e; var b=document.getElementById('btnInstall'); if(b) b.style.display=''; });
+  window.addEventListener('appinstalled', function(){ var b=document.getElementById('btnInstall'); if(b) b.style.display='none'; var t=document.getElementById('installTip'); if(t) t.textContent='已安装，感谢使用小助理 🎉'; });
   // PWA: 注册 Service Worker，并在检测到新版本时自动刷新（仅 http(s) 下生效，file:// 不注册）
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
     var _pwaReloading=false;
@@ -2865,8 +2874,18 @@ function boot(){
     navigator.serviceWorker.addEventListener('controllerchange', function(){
       if(_pwaReloading) return; _pwaReloading=true; location.reload();
     });
-  }
 }
+function installApp(){
+  var p=window._deferredPrompt;
+  if(p){ p.prompt(); p.userChoice.then(function(){ window._deferredPrompt=null; }); return; }
+  // iOS Safari 不支持 beforeinstallprompt：引导用户手动添加
+  var ua=navigator.userAgent.toLowerCase();
+  if(/iphone|ipad|ipod/.test(ua)){ toast('请用 Safari 打开 → 点底部「分享」→「添加到主屏幕」'); }
+  else { toast('点浏览器右上角菜单 →「安装应用 / 添加到主屏幕」'); }
+}
+
+}
+
 if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded',boot);
 
 </script>
