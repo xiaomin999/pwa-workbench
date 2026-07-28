@@ -126,6 +126,26 @@ body.sb-collapsed .sb-top{justify-content:center;padding:16px 0;}
 /* progress */
 .bar{height:9px;background:var(--c-line);border-radius:99px;overflow:hidden;}
 .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--c-primary),#6f9bff);border-radius:99px;transition:width .5s cubic-bezier(.22,1,.36,1);}
+.bar.sm{height:7px;margin:7px 0 4px;}
+.bar.sm > i{background:linear-gradient(90deg,#34c77b,#7ee0a8);}
+
+/* 学习看板 */
+.board{display:flex;flex-direction:column;gap:11px;}
+.board-row{background:var(--c-bg);border-radius:13px;padding:12px 13px;cursor:pointer;transition:transform .12s,box-shadow .2s;}
+.board-row:active{transform:scale(.985);}
+.br-top{display:flex;justify-content:space-between;align-items:baseline;}
+.br-name{font-weight:700;font-size:14px;color:var(--c-ink);}
+.br-pct{font-weight:800;font-size:15px;color:var(--c-primary);}
+.br-sub{font-size:12px;color:var(--c-sub);margin-top:2px;}
+.board-sum{display:flex;gap:10px;margin-top:10px;}
+.board-sum > div{flex:1;background:var(--c-bg);border-radius:12px;padding:10px;text-align:center;}
+.board-sum .n{font-size:20px;font-weight:800;color:var(--c-ink);}
+.board-sum .l{font-size:11px;color:var(--c-sub);margin-top:2px;}
+
+/* 学习任务勾选框 */
+.chk{width:27px;height:27px;border-radius:8px;border:2px solid var(--c-line);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0;color:var(--c-sub);transition:all .15s;}
+.chk.on{background:var(--c-primary);border-color:var(--c-primary);color:#fff;}
+
 
 /* buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 18px;border-radius:14px;
@@ -738,6 +758,34 @@ const PMP_ROADMAP = [
 function bili(q){ return 'https://search.bilibili.com/all?keyword='+encodeURIComponent(q); }
 function baidu(q){ return 'https://www.baidu.com/s?wd='+encodeURIComponent(q); }
 function seedRoadmap(type){ if(type==='python') return PY_ROADMAP.map(t=>({t,url:bili(t+' 教程'),min:40})); if(type==='pmp') return PMP_ROADMAP.map(t=>({t,url:bili('产品经理 '+t),min:30})); return []; }
+/* ============ 视频课程：点击直接内嵌播放，无需再搜索 ============ */
+function biliIframe(bvid){
+  return `<iframe src="https://player.bilibili.com/player.html?bvid=${bvid}&high_quality=1&autoplay=0&danmaku=0" style="width:100%;height:220px;border:0;border-radius:10px;background:#000" allowfullscreen scrolling="no"></iframe>`;
+}
+function openVideo(title, url){
+  const titleEsc=U.escape(title||'');
+  const body=`<div class="small muted mb">${titleEsc}</div>
+    <div id="vbox" style="min-height:220px;display:flex;align-items:center;justify-content:center;background:#0a0a0a;border-radius:10px;color:#fff;font-size:13px">⏳ 正在为你找到可直接播放的视频…</div>`;
+  UI.openSheet('📺 视频课程', body+`<div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`);
+  // 若任务已带具体 B站视频页，直接内嵌；否则用标题去后端实时取第一个视频
+  const m = url ? url.match(/bilibili\.com\/video\/(BV[0-9A-Za-z]+)/i) : null;
+  const direct = m ? m[1] : null;
+  if(direct){ document.getElementById('vbox').innerHTML=biliIframe(direct); return; }
+  loadBiliVideo(title||(url||''));
+}
+function loadBiliVideo(q){
+  const box=document.getElementById('vbox'); if(!box) return;
+  const ep=DB.data.settings.net.endpoint||'';
+  const base=ep? ep.replace(/\/api\/.*$/,'') : '';
+  if(!base){
+    box.innerHTML=`<a class="btn" href="${bili(q)}" target="_blank" style="background:#fb7299;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none">▶ 在B站打开：${U.escape(q)}</a><div class="small muted mt" style="color:#bbb">未配置联网端点，已为你打开B站搜索</div>`;
+    return;
+  }
+  fetch(base+'/api/video?q='+encodeURIComponent(q)).then(r=>r.json()).then(j=>{
+    if(j&&j.bvid){ box.innerHTML=biliIframe(j.bvid); }
+    else { box.innerHTML=`<a class="btn" href="${bili(q)}" target="_blank" style="background:#fb7299;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none">▶ 在B站打开：${U.escape(q)}</a><div class="small muted mt" style="color:#bbb">未找到可嵌入视频，已为你打开B站</div>`; }
+  }).catch(()=>{ box.innerHTML=`<a class="btn" href="${bili(q)}" target="_blank" style="background:#fb7299;color:#fff;padding:10px 16px;border-radius:10px;text-decoration:none">▶ 在B站打开：${U.escape(q)}</a>`; });
+}
 /* ===== 投资理财四阶段学习体系（用户定制） ===== */
 const INVEST_PLAN=[
  {stage:1,name:'理财启蒙·财务底层认知',weeks:4,hours:30,goal:'破除暴富幻想；分清资产/负债；看懂个人现金流；建立风险意识；理清收支逻辑（联动「存钱计划」模块）',
@@ -869,10 +917,10 @@ function investStage(stage){
   body+=`<div style="font-weight:700;margin-bottom:4px">核心目标</div>${U.escape(s.goal||'')}<br><br>`;
   if(s.weeks) s.weeks.forEach(wk=>{
     body+=`<div style="font-weight:700;margin:10px 0 4px">第${wk.w}周 · ${wk.title}</div>`;
-    wk.tasks.forEach(tt=>{ body+=`• ${U.escape(tt.t)} <a href="${bili(tt.vid)}" target="_blank" style="color:#2b7de9">▶视频</a><br>`; });
+    wk.tasks.forEach(tt=>{ body+=`• ${U.escape(tt.t)} <span style="color:#2b7de9;cursor:pointer" onclick="openVideo('${tt.t.replace(/'/g,"\\'")}','')">▶视频</span><br>`; });
     if(wk.quiz) body+=`✅ ${U.escape(wk.quiz)}<br>`;
   });
-  if(s.loop) s.loop.forEach(lp=>{ body+=`• ${U.escape(lp.t)} <a href="${bili(lp.vid)}" target="_blank" style="color:#2b7de9">▶视频</a><br>`; });
+  if(s.loop) s.loop.forEach(lp=>{ body+=`• ${U.escape(lp.t)} <span style="color:#2b7de9;cursor:pointer" onclick="openVideo('${lp.t.replace(/'/g,"\\'")}','')">▶视频</span><br>`; });
   if(s.books){ body+=`<br><div style="font-weight:700">推荐书目</div>`; s.books.forEach(b=>{ body+=`• ${U.escape(b.name)} <a href="${b.url}" target="_blank" style="color:#2b7de9">▶看解读</a><br>`; }); }
   body+=`</div><div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`;
   UI.openSheet('阶段'+stage+' · '+s.name, body);
@@ -931,7 +979,20 @@ function refreshHot(){
   toast('未配置联网端点，去「设置 → 联网抓取」配置后联网拉取爆款 🔧');
   renderHot();
 }
-function roadmapSheet(type){ const rm=DB.data.study.roadmap[type]; if(!rm) return; const body=`<div class="small" style="white-space:pre-wrap;line-height:1.8">${rm.nodes.map((nn,i)=>`${i<rm.idx?'✅':'⬜'} ${nn.t}\n   🔗 ${nn.url}`).join('\n')}</div><div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`; UI.openSheet(rm.name+' 路线图',body); }
+function openRoadmap(type){
+  const rm=DB.data.study.roadmap[type]; if(!rm) return;
+  const body=`<div class="small muted mb">共 ${rm.nodes.length} 节 · 已学 ${rm.idx} 节 · 点击「▶ 视频」直接看，无需搜索</div>
+    <div class="list">${rm.nodes.map((nn,i)=>`<div class="li"><span class="main"><div class="title" style="${i<rm.idx?'text-decoration:line-through;color:var(--c-sub)':''}">${i+1}. ${U.escape(nn.t)}</div><div class="desc">${nn.min}分 ${i<rm.idx?'· 已学 ✅':''}</div></span><span class="right" style="color:#2b7de9;cursor:pointer" onclick="openVideo('${(nn.t||'').replace(/'/g,"\\'")}','')">▶ 视频</span></div>`).join('')}</div>
+    <div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`;
+  UI.openSheet(rm.name+' · 完整课程清单', body);
+}
+function openInvestRoadmap(){
+  let body='<div class="list">';
+  INVEST_PLAN.forEach(s=>{
+    if(s.weeks) s.weeks.forEach(wk=>{ wk.tasks.forEach(tt=>{ body+=`<div class="li"><span class="main"><div class="title">S${s.stage}·${U.escape(tt.t)}</div></span><span class="right" style="color:#2b7de9;cursor:pointer" onclick="openVideo('${(tt.t||'').replace(/'/g,"\\'")}','')">▶ 视频</span></div>`; }); }); });
+    body+='</div>';
+  UI.openSheet('理财四阶段 · 完整课程清单', body);
+}
 
 /* ============ 主调度 AI：意图识别 + 路由 ============ */
 const AI = {
@@ -1420,6 +1481,33 @@ function addExercise(){ UI.openForm('记录运动',[{key:'n',label:'运动类型
 function delRec(type,id){ DB.data.weight.records=DB.data.weight.records.filter(r=>r.id!==id); Store.emit('weight'); go('m/weight'); }
 function editProfile(){ const p=DB.data.settings.profile; UI.openForm('身体数据',[{key:'sex',label:'性别',type:'seg',options:['男','女'],value:p.sex},{key:'height',label:'身高 cm',type:'number',value:p.height},{key:'age',label:'年龄',type:'number',value:p.age},{key:'weight',label:'当前体重 kg',type:'number',value:p.weight},{key:'targetWeight',label:'目标体重 kg',type:'number',value:p.targetWeight},{key:'reduceRate',label:'周减重 kg',type:'number',value:p.reduceRate}],v=>{ DB.data.settings.profile={sex:v.sex,height:+v.height,age:+v.age,weight:+v.weight,targetWeight:+v.targetWeight,reduceRate:+v.reduceRate}; DB.save(); toast('已保存'); go('m/weight'); }); }
 /* ============ 模块2 学习计划 ============ */
+function studyBoard(){
+  const sd=DB.data.study;
+  const minOf=arr=>arr.filter(x=>x.done).reduce((a,x)=>a+(x.estMin||0),0);
+  const blocks=[];
+  if(sd.roadmap.python){ const r=sd.roadmap.python; const done=Math.min(r.idx,r.nodes.length); blocks.push({icon:'🐍',name:'Python 学习路线',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='python'))}); }
+  if(sd.roadmap.pmp){ const r=sd.roadmap.pmp; const done=Math.min(r.idx,r.nodes.length); blocks.push({icon:'📦',name:'PMP 产品实践',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='pmp'))}); }
+  if(sd.invest&&sd.invest.enabled){ const tot=INVEST_TASKS.length, done=Math.min(sd.invest.idx,tot); blocks.push({icon:'📈',name:'理财四阶段',mod:'投资',sub:'阶段进度',done,tot,min:minOf(sd.tasks.filter(x=>x.plan==='invest'))}); }
+  if(sd.ielts&&sd.ielts.enabled){ const items=sd.ielts.items||[]; const done=items.filter(x=>x.done).length; blocks.push({icon:'🎙',name:'雅思口语跟读',mod:'英语',sub:'今日跟读',done,tot:items.length,min:0}); }
+  [['技术','💻'],['投资','💰'],['英语','🔤']].forEach(([cat,ic])=>{ const all=sd.tasks.filter(x=>x.cat===cat&&!x.plan); if(all.length){ const done=all.filter(x=>x.done).length; blocks.push({icon:ic,name:cat+'·通用任务',mod:cat,sub:'自定义清单',done,tot:all.length,min:minOf(all)}); } });
+  (sd.custom||[]).forEach(c=>{ const all=sd.tasks.filter(x=>x.cat===c.name); const done=all.filter(x=>x.done).length; blocks.push({icon:'📚',name:c.name,mod:c.name,sub:'学习任务',done,tot:all.length,min:minOf(all)}); });
+  if(!blocks.length) return `<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📊 学习看板</span></div><div class="empty">还没有学习内容。先去「技术/投资/英语」开启一个计划，或点右上角 ＋ 新建模块，打卡后这里会显示每块进度。</div></div>`;
+  const allDone=blocks.reduce((a,b)=>a+b.done,0), allTot=blocks.reduce((a,b)=>a+b.tot,0);
+  const overall=allTot?allDone/allTot:0;
+  const allMin=blocks.reduce((a,b)=>a+b.min,0);
+  const streak=new Set(sd.tasks.filter(x=>x.done).map(x=>x.date)).size;
+  let h=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📊 学习看板</span><span class="more">总进度 ${Math.round(overall*100)}%</span></div>`;
+  h+=`<div class="bar mt"><i style="width:${Math.round(overall*100)}%"></i></div>`;
+  h+=`<div class="board-sum"><div><div class="n">${allDone}/${allTot}</div><div class="l">已完成任务</div></div><div><div class="n">${allMin}</div><div class="l">累计分钟</div></div><div><div class="n">${streak}</div><div class="l">学习天数</div></div></div>`;
+  h+=`<div class="board mt">`;
+  h+=blocks.map(b=>{ const pct=Math.round((b.tot?b.done/b.tot:0)*100); return `<div class="board-row" onclick="window._studyMod='${U.escape(b.mod)}';renderStudy()">
+    <div class="br-top"><span class="br-name">${b.icon} ${U.escape(b.name)}</span><span class="br-pct">${pct}%</span></div>
+    <div class="bar sm"><i style="width:${pct}%"></i></div>
+    <div class="br-sub">${U.escape(b.sub)} · 已学 ${b.done}/${b.tot}${b.min?(' · '+b.min+'分钟'):''}</div>
+  </div>`; }).join('');
+  h+=`</div></div>`;
+  return h;
+}
 function renderStudy(){
   const sd=DB.data.study; const t=U.today();
   const custom=(sd.custom||[]).map(c=>c.name);
@@ -1431,12 +1519,13 @@ function renderStudy(){
   else if(mod==='投资') body=studyInvest(sd,t);
   else if(mod==='英语') body=studyEnglish(sd,t);
   else body=studyCustom(mod,sd,t);
-  UI.mount(`<div class="page-head"><h1>学习计划</h1><span class="sub">按模块排课</span></div>${tabs}${body}`);
+  UI.mount(`<div class="page-head"><h1>学习计划</h1><span class="sub">按模块排课</span></div>${tabs}${studyBoard()}${body}`);
 }
 function taskLi(x){
+  const urlEsc=(x.url||'').replace(/'/g,"\\'");
   return `<div class="li">
-    <span style="font-size:20px;cursor:pointer" onclick="toggleStudy('${x.id}')">${x.done?'✅':'⬜'}</span>
-    <span class="main" onclick="toggleStudy('${x.id}')"><div class="title" style="${x.done?'text-decoration:line-through;color:var(--c-sub)':''}">${x.stage?('S'+x.stage+'·'+(x.loop?'实战循环':(x.quiz?'自测':'第'+x.week+'周'))+' '):''}${U.escape(x.title)}</div><div class="desc">${x.estMin}分 ${x.url?`<a href="${x.url}" target="_blank" onclick="event.stopPropagation()">▶ 看视频</a>`:''} ${x.auto?'· 自动':''}</div></span>
+    <span class="chk ${x.done?'on':''}" onclick="toggleStudy('${x.id}')" title="点此勾选：已学/未学">${x.done?'✔':'+'}</span>
+    <span class="main" onclick="toggleStudy('${x.id}')"><div class="title" style="${x.done?'text-decoration:line-through;color:var(--c-sub)':''}">${x.stage?('S'+x.stage+'·'+(x.loop?'实战循环':(x.quiz?'自测':'第'+x.week+'周'))+' '):''}${U.escape(x.title)}</div><div class="desc">${x.estMin}分 · <span style="color:#2b7de9;cursor:pointer" onclick="event.stopPropagation();openVideo('${(x.title||'').replace(/'/g,"\\'")}','${urlEsc}')">▶ 看视频</span> ${x.auto?'· 自动':''} · ${x.done?'<b style="color:#34c77b">已学✓</b>':'<span style="color:#e08600">未学</span>'}</div></span>
     <button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="editStudyTask('${x.id}')">✎</button>
     <button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="delStudyTask('${x.id}')">✕</button>
   </div>`;
@@ -1447,12 +1536,12 @@ function studyTech(sd,t){
   const rmP=sd.roadmap.python, rmM=sd.roadmap.pmp;
   const tTasks=sd.tasks.filter(x=>x.date===t&&x.cat==='技术');
   let h='';
-  h+=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🐍 Python 学习路线</span><span class="more" onclick="${rmP?'roadmapSheet(\'python\')':'enablePlan(\'python\')'}">${rmP?('进度 '+rmP.idx+'/'+rmP.nodes.length+' ›'):'启用 ›'}</span></div>`;
-  if(rmP){ const tp=tTasks.filter(x=>x.plan==='python'); h+=`<div class="list">${tp.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务，点下方生成</div>'}</div>`; }
+  h+=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🐍 Python 学习路线</span><span class="more" onclick="${rmP?'openRoadmap(\'python\')':'enablePlan(\'python\')'}">${rmP?('进度 '+rmP.idx+'/'+rmP.nodes.length+' ›'):'启用 ›'}</span></div>`;
+  if(rmP){ const tp=tTasks.filter(x=>x.plan==='python'); h+=`<div class="list">${tp.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务，点下方生成</div>'}</div>`; h+=`<div class="btn ghost mt" onclick="openRoadmap('python')">📋 完整课程清单（${rmP.nodes.length}节）</div>`; }
   else h+='<div class="small muted" style="padding:2px 0">基础→爬虫→数据分析→Web→实战，每条附视频</div>';
   h+='</div>';
-  h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>📦 PMP 产品项目实践</span><span class="more" onclick="${rmM?'roadmapSheet(\'pmp\')':'enablePlan(\'pmp\')'}">${rmM?('进度 '+rmM.idx+'/'+rmM.nodes.length+' ›'):'启用 ›'}</span></div>`;
-  if(rmM){ const tm=tTasks.filter(x=>x.plan==='pmp'); h+=`<div class="list">${tm.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务</div>'}</div>`; }
+  h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>📦 PMP 产品项目实践</span><span class="more" onclick="${rmM?'openRoadmap(\'pmp\')':'enablePlan(\'pmp\')'}">${rmM?('进度 '+rmM.idx+'/'+rmM.nodes.length+' ›'):'启用 ›'}</span></div>`;
+  if(rmM){ const tm=tTasks.filter(x=>x.plan==='pmp'); h+=`<div class="list">${tm.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务</div>'}</div>`; h+=`<div class="btn ghost mt" onclick="openRoadmap('pmp')">📋 完整课程清单（${rmM.nodes.length}节）</div>`; }
   else h+='<div class="small muted" style="padding:2px 0">竞品/PRD/调研/数据/复盘，每条附视频</div>';
   h+='</div>';
   const gen=tTasks.filter(x=>!x.plan);
@@ -1468,6 +1557,7 @@ function studyInvest(sd,t){
   h+=`<div class="card"><div class="card-h" style="cursor:pointer" onclick="investStage(${curStage})"><span class="t"><i class="dot"></i>📈 理财四阶段学习</span><span class="more">${inv.enabled?('阶段 '+curStage+'/4 ›'):'点击查看 ›'}</span></div>
     <div class="small muted mt">启蒙 → 低风险工具 → 基金定投 → 进阶实战，每天自动排课 + 视频</div>
     <div style="display:flex;gap:6px;margin-top:10px">${chips}</div>
+    <div class="btn ghost mt" onclick="openInvestRoadmap()">📋 完整课程清单</div>
     ${inv.enabled?'':`<div class="btn ghost mt" onclick="enablePlan('invest')">▶ 开启此计划</div>`}</div>`;
   if(inv.enabled){
     h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>学习进度</span><span class="more">阶段 ${curStage}/4</span></div>
