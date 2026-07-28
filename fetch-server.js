@@ -22,6 +22,25 @@ async function fetchJSON(url, referer){
   return r.json();
 }
 
+/* ============ 视频：根据关键词取 B站第一个视频的 BV 号（供前端内嵌播放） ============ */
+const _biliCache = new Map();
+async function searchBiliVideo(q){
+  if(_biliCache.has(q)) return _biliCache.get(q);
+  let bvid=null;
+  try{
+    const url='https://search.bilibili.com/all?keyword='+encodeURIComponent(q);
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort(), 6000);
+    const r=await fetch(url,{headers:{'User-Agent':UA,'Referer':'https://www.bilibili.com/'},signal:ctrl.signal});
+    clearTimeout(to);
+    const html=await r.text();
+    const m=html.match(/BV[1-9A-HJ-NP-Za-km-z]{10}/);
+    bvid=m?m[0]:null;
+  }catch(e){ bvid=null; }
+  _biliCache.set(q,bvid);
+  return bvid;
+}
+
 /* ============ 热点选题：按行业生成「跟上做法 / 二改方法」 ============ */
 const NET_INDUSTRIES = {
   beauty:{label:'美妆穿搭',platform:'小红书',follow:[
@@ -295,6 +314,18 @@ http.createServer(async (req,res)=>{
       return;
     }
     res.statusCode=405; res.setHeader('Content-Type','application/json;charset=utf-8'); return res.end('Method Not Allowed');
+  }
+  if(req.url.startsWith('/api/video')){
+    const q=new URL(req.url,'http://localhost').searchParams.get('q')||'';
+    if(!q){ res.statusCode=400; res.setHeader('Content-Type','application/json;charset=utf-8'); return res.end(JSON.stringify({error:'缺少 q 参数'})); }
+    try{
+      const bvid=await searchBiliVideo(q);
+      res.setHeader('Content-Type','application/json;charset=utf-8');
+      return res.end(JSON.stringify({bvid, query:q}));
+    }catch(e){
+      res.setHeader('Content-Type','application/json;charset=utf-8');
+      return res.end(JSON.stringify({bvid:null, query:q, error:String(e&&e.message||e)}));
+    }
   }
   if(req.url.startsWith('/api/ai')){
     if(req.method!=='POST'){ res.statusCode=405; res.setHeader('Content-Type','text/plain;charset=utf-8'); return res.end('Method Not Allowed'); }
