@@ -359,11 +359,53 @@ const DB = {
       chat:[]
     };
   },
-  save(){ try{ localStorage.setItem(this.KEY, JSON.stringify(this.data)); }catch(e){ toast('保存失败：存储空间不足'); } },
+  save(){ try{ localStorage.setItem(this.KEY, JSON.stringify(this.data)); }catch(e){ toast('保存失败：存储空间不足'); } if(typeof CloudSync!=='undefined') CloudSync.push(); },
   get(k){ return this.data[k]; },
   set(k,v){ this.data[k]=v; this.save(); },
   reset(){ if(confirm('确定清除全部本地数据？此操作不可恢复！')){ localStorage.removeItem(this.KEY); this.load(); Store.emit('*'); toast('已清除缓存'); } },
   exportAll(){ return JSON.stringify(this.data,null,2); },
+};
+/* ============ 云同步（Railway 后端，同步码多端互通） ============ */
+const CloudSync = {
+  _busy:false,
+  enabled(){ const s=DB.data.settings.sync; return !!(s&&s.code&&s.code.length>=4); },
+  base(){ const s=DB.data.settings.sync||{}; let ep=s.endpoint||''; if(!ep){ const ne=DB.data.settings.net.endpoint||''; ep=ne.replace(/\/api\/topics$/,'').replace(/\/$/,''); } return ep||'https://pwa-workbench-production.up.railway.app'; },
+  async push(){
+    if(this._busy||!this.enabled()) return; this._busy=true;
+    try{
+      const c=DB.data.settings.sync; const ts=Date.now();
+      const r=await fetch(this.base()+'/api/sync?code='+encodeURIComponent(c.code),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c.code,data:DB.data,ts})});
+      const j=await r.json();
+      if(j&&j.ok){ DB.data.syncMeta={ts:ts,at:ts}; }
+    }catch(e){ /* 静默，避免打断用户操作 */ }
+    finally{ this._busy=false; }
+  },
+  async pull(){
+    if(this._busy||!this.enabled()) return false; this._busy=true;
+    try{
+      const c=DB.data.settings.sync;
+      const r=await fetch(this.base()+'/api/sync?code='+encodeURIComponent(c.code),{method:'GET'});
+      const j=await r.json();
+      if(j&&j.data){
+        const localTs=(DB.data.syncMeta&&DB.data.syncMeta.ts)||0;
+        if(j.ts>localTs){
+          const keep=DB.data.syncMeta;
+          Object.keys(j.data).forEach(k=>{ DB.data[k]=j.data[k]; });
+          DB.data.syncMeta={ts:j.ts,at:Date.now()};
+          DB.save(); Store.emit('*');
+          if(typeof toast==='function') toast('已从云端同步最新数据 ☁️');
+          return true;
+        }
+      }
+    }catch(e){}
+    finally{ this._busy=false; }
+    return false;
+  },
+  async now(){
+    if(!this.enabled()){ if(typeof toast==='function') toast('请先在设置里填写同步码'); return; }
+    const pulled=await this.pull();
+    if(!pulled){ await this.push(); if(typeof toast==='function') toast('已上传到云端 ☁️'); }
+  }
 };
 /* ============ 状态层 Store（发布订阅 + 聚合） ============ */
 const Store = {
@@ -2614,10 +2656,17 @@ function renderSettings(){
       <div class="small muted mb">把小助理安装到手机桌面，像原生 App 一样全屏打开、随时使用，还能收到版本更新。</div>
       <button class="btn ghost mt" id="btnInstall" onclick="installApp()">📲 安装到主屏幕</button>
       <div class="small muted mt" id="installTip">安卓：点浏览器菜单「安装应用 / 添加到主屏幕」。苹果：用 Safari 打开 → 分享 →「添加到主屏幕」。</div></div>
-    <div class="note">🔒 数据仅存于本机浏览器（localStorage），不上传任何服务器。</div>`);
+    <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>☁️ 云同步（多端互通）</span></div>
+      <div class="small muted mb">设一个「同步码」（手机和电脑填同一个），数据会自动存到云端后端，多端实时互通。同步码就是你的密码，请勿使用真实密码。</div>
+      <div class="kv"><span class="k">同步状态</span><span>${(DB.data.settings.sync&&DB.data.settings.sync.code)?'已开启（码：'+DB.data.settings.sync.code+'）':'未开启'}</span></div>
+      <button class="btn ghost mt" onclick="editSync()">配置云同步</button>
+      <button class="btn ghost mt" onclick="CloudSync.now()">☁️ 立即同步一次</button>
+      <div class="small muted mt">后端默认复用联网抓取的 Railway 服务。如需自定义，在「配置云同步」里改端点地址。</div></div>
+    <div class="note">🔒 未开启云同步时，数据仅存本机浏览器；开启后数据会同步到你设置的云端后端。</div>`);
 }
 function editAI(){ const s=DB.data.settings; UI.openForm('配置 AI API',[{key:'apiBase',label:'API Base URL',type:'text',placeholder:'https://api.openai.com/v1/chat/completions',value:s.apiBase},{key:'apiKey',label:'API Key',type:'password',value:s.apiKey},{key:'apiModel',label:'模型名',type:'text',value:s.apiModel}],v=>{ s.apiBase=v.apiBase; s.apiKey=v.apiKey; s.apiModel=v.apiModel; DB.save(); toast('已保存'); go('support/settings'); }); }
 function editNet(){ const s=DB.data.settings; UI.openForm('配置联网抓取端点',[{key:'endpoint',label:'抓取服务地址',type:'text',placeholder:'http://localhost:3001/api/topics',value:s.net.endpoint},{key:'auto',label:'打开App时自动联网刷新',type:'seg',options:['否','是'],value:s.net.auto?'是':'否'}],v=>{ s.net.endpoint=v.endpoint.trim(); s.net.auto=v.auto==='是'; DB.save(); toast('已保存'); if(s.net.endpoint) refreshTopicsNet(); go('support/settings'); }); }
+function editSync(){ const s=DB.data.settings; if(!s.sync) s.sync={endpoint:'https://pwa-workbench-production.up.railway.app',code:''}; UI.openForm('配置云同步',[{key:'code',label:'同步码（手机电脑填同一个）',type:'text',placeholder:'例如 xiaozhuli-2026',value:s.sync.code},{key:'endpoint',label:'同步后端地址',type:'text',placeholder:'https://pwa-workbench-production.up.railway.app',value:s.sync.endpoint}],v=>{ s.sync.code=v.code.trim(); s.sync.endpoint=v.endpoint.trim()||'https://pwa-workbench-production.up.railway.app'; DB.save(); toast('已保存，正在同步…'); if(s.sync.code) CloudSync.now(); go('support/settings'); }); }
 const NET_INDUSTRIES=[{key:'beauty',label:'美妆穿搭'},{key:'office',label:'职场办公'},{key:'finance',label:'财经理财'},{key:'knowledge',label:'知识科普'},{key:'food',label:'美食探店'},{key:'travel',label:'旅游'},{key:'parent',label:'育儿亲子'},{key:'fitness',label:'健身减脂'}];
 function netIndustryLabels(v){ const arr=(v||'').split(',').map(s=>s.trim()).filter(Boolean); if(!arr.length) return '通用'; return arr.map(k=>{ const o=NET_INDUSTRIES.find(x=>x.key===k); return o?o.label:k; }).join('、'); }
 function netToggleIndustry(k){ const s=DB.data.settings.net; const arr=(s.industry||'').split(',').map(x=>x.trim()).filter(Boolean); const i=arr.indexOf(k); if(i>=0) arr.splice(i,1); else arr.push(k); s.industry=arr.join(','); DB.save();
@@ -2874,6 +2923,8 @@ function boot(){
     navigator.serviceWorker.addEventListener('controllerchange', function(){
       if(_pwaReloading) return; _pwaReloading=true; location.reload();
     });
+  // 云同步：启动后延迟拉取云端最新数据（多端互通）
+  if(DB.data.settings.sync && DB.data.settings.sync.code && typeof CloudSync!=='undefined'){ setTimeout(function(){ CloudSync.pull(); }, 1500); }
 }
 function installApp(){
   var p=window._deferredPrompt;
