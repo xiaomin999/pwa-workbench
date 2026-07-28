@@ -981,8 +981,9 @@ function refreshHot(){
 }
 function openRoadmap(type){
   const rm=DB.data.study.roadmap[type]; if(!rm) return;
-  const body=`<div class="small muted mb">共 ${rm.nodes.length} 节 · 已学 ${rm.idx} 节 · 点击「▶ 视频」直接看，无需搜索</div>
-    <div class="list">${rm.nodes.map((nn,i)=>`<div class="li"><span class="main"><div class="title" style="${i<rm.idx?'text-decoration:line-through;color:var(--c-sub)':''}">${i+1}. ${U.escape(nn.t)}</div><div class="desc">${nn.min}分 ${i<rm.idx?'· 已学 ✅':''}</div></span><span class="right" style="color:#2b7de9;cursor:pointer" onclick="openVideo('${(nn.t||'').replace(/'/g,"\\'")}','')">▶ 视频</span></div>`).join('')}</div>
+  const doneSet=new Set(DB.data.study.tasks.filter(x=>x.plan===type&&x.done).map(x=>x.title));
+  const body=`<div class="small muted mb">共 ${rm.nodes.length} 节 · 已学 ${doneSet.size} 节（仅统计你实际勾选）· 点击「▶ 视频」直接看，无需搜索</div>
+    <div class="list">${rm.nodes.map((nn,i)=>`<div class="li"><span class="main"><div class="title" style="${doneSet.has(nn.t)?'text-decoration:line-through;color:var(--c-sub)':''}">${i+1}. ${U.escape(nn.t)}</div><div class="desc">${nn.min}分 ${doneSet.has(nn.t)?'· 已学 ✅':''}</div></span><span class="right" style="color:#2b7de9;cursor:pointer" onclick="openVideo('${(nn.t||'').replace(/'/g,"\\'")}','')">▶ 视频</span></div>`).join('')}</div>
     <div class="btn ghost mt" onclick="UI.closeSheet()">关闭</div>`;
   UI.openSheet(rm.name+' · 完整课程清单', body);
 }
@@ -1485,9 +1486,9 @@ function studyBoard(){
   const sd=DB.data.study;
   const minOf=arr=>arr.filter(x=>x.done).reduce((a,x)=>a+(x.estMin||0),0);
   const blocks=[];
-  if(sd.roadmap.python){ const r=sd.roadmap.python; const done=Math.min(r.idx,r.nodes.length); blocks.push({icon:'🐍',name:'Python 学习路线',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='python'))}); }
-  if(sd.roadmap.pmp){ const r=sd.roadmap.pmp; const done=Math.min(r.idx,r.nodes.length); blocks.push({icon:'📦',name:'PMP 产品实践',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='pmp'))}); }
-  if(sd.invest&&sd.invest.enabled){ const tot=INVEST_TASKS.length, done=Math.min(sd.invest.idx,tot); blocks.push({icon:'📈',name:'理财四阶段',mod:'投资',sub:'阶段进度',done,tot,min:minOf(sd.tasks.filter(x=>x.plan==='invest'))}); }
+  if(sd.roadmap.python){ const r=sd.roadmap.python; const done=sd.tasks.filter(x=>x.plan==='python'&&x.done).length; blocks.push({icon:'🐍',name:'Python 学习路线',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='python'))}); }
+  if(sd.roadmap.pmp){ const r=sd.roadmap.pmp; const done=sd.tasks.filter(x=>x.plan==='pmp'&&x.done).length; blocks.push({icon:'📦',name:'PMP 产品实践',mod:'技术',sub:'课程进度',done,tot:r.nodes.length,min:minOf(sd.tasks.filter(x=>x.plan==='pmp'))}); }
+  if(sd.invest&&sd.invest.enabled){ const tot=INVEST_TASKS.length, done=sd.tasks.filter(x=>x.plan==='invest'&&x.done).length; blocks.push({icon:'📈',name:'理财四阶段',mod:'投资',sub:'阶段进度',done,tot,min:minOf(sd.tasks.filter(x=>x.plan==='invest'))}); }
   if(sd.ielts&&sd.ielts.enabled){ const items=sd.ielts.items||[]; const done=items.filter(x=>x.done).length; blocks.push({icon:'🎙',name:'雅思口语跟读',mod:'英语',sub:'今日跟读',done,tot:items.length,min:0}); }
   [['技术','💻'],['投资','💰'],['英语','🔤']].forEach(([cat,ic])=>{ const all=sd.tasks.filter(x=>x.cat===cat&&!x.plan); if(all.length){ const done=all.filter(x=>x.done).length; blocks.push({icon:ic,name:cat+'·通用任务',mod:cat,sub:'自定义清单',done,tot:all.length,min:minOf(all)}); } });
   (sd.custom||[]).forEach(c=>{ const all=sd.tasks.filter(x=>x.cat===c.name); const done=all.filter(x=>x.done).length; blocks.push({icon:'📚',name:c.name,mod:c.name,sub:'学习任务',done,tot:all.length,min:minOf(all)}); });
@@ -1496,7 +1497,7 @@ function studyBoard(){
   const overall=allTot?allDone/allTot:0;
   const allMin=blocks.reduce((a,b)=>a+b.min,0);
   const streak=new Set(sd.tasks.filter(x=>x.done).map(x=>x.date)).size;
-  let h=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📊 学习看板</span><span class="more">总进度 ${Math.round(overall*100)}%</span></div>`;
+  let h=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>📊 学习看板</span><span class="more">总进度 ${Math.round(overall*100)}% <span style="margin-left:8px;color:#e08600;cursor:pointer" onclick="resetStudyProgress()" title="清空所有已学进度（标回未学，指针归零）">↺ 重置</span></span></div>`;
   h+=`<div class="bar mt"><i style="width:${Math.round(overall*100)}%"></i></div>`;
   h+=`<div class="board-sum"><div><div class="n">${allDone}/${allTot}</div><div class="l">已完成任务</div></div><div><div class="n">${allMin}</div><div class="l">累计分钟</div></div><div><div class="n">${streak}</div><div class="l">学习天数</div></div></div>`;
   h+=`<div class="board mt">`;
@@ -1534,13 +1535,14 @@ function delStudyTask(id){ if(!confirm('删除这条学习任务？')) return; D
 function editStudyTask(id){ const x=DB.data.study.tasks.find(t=>t.id===id); if(!x) return; UI.openForm('编辑学习任务',[{key:'title',label:'学习内容',type:'text',value:x.title},{key:'est',label:'预估时长(分)',type:'number',value:x.estMin},{key:'url',label:'学习视频链接',type:'text',value:x.url||''},{key:'date',label:'日期',type:'date',value:x.date}],v=>{ x.title=v.title; x.estMin=+v.est||30; x.url=v.url||''; x.date=v.date||U.today(); DB.save(); toast('已更新'); renderStudy(); }); }
 function studyTech(sd,t){
   const rmP=sd.roadmap.python, rmM=sd.roadmap.pmp;
+  const doneP=rmP?sd.tasks.filter(x=>x.plan==='python'&&x.done).length:0; const doneM=rmM?sd.tasks.filter(x=>x.plan==='pmp'&&x.done).length:0;
   const tTasks=sd.tasks.filter(x=>x.date===t&&x.cat==='技术');
   let h='';
-  h+=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🐍 Python 学习路线</span><span class="more" onclick="${rmP?'openRoadmap(\'python\')':'enablePlan(\'python\')'}">${rmP?('进度 '+rmP.idx+'/'+rmP.nodes.length+' ›'):'启用 ›'}</span></div>`;
+  h+=`<div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🐍 Python 学习路线</span><span class="more" onclick="${rmP?'openRoadmap(\'python\')':'enablePlan(\'python\')'}">${rmP?('进度 '+doneP+'/'+rmP.nodes.length+' ›'):'启用 ›'}</span></div>`;
   if(rmP){ const tp=tTasks.filter(x=>x.plan==='python'); h+=`<div class="list">${tp.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务，点下方生成</div>'}</div>`; h+=`<div class="btn ghost mt" onclick="openRoadmap('python')">📋 完整课程清单（${rmP.nodes.length}节）</div>`; }
   else h+='<div class="small muted" style="padding:2px 0">基础→爬虫→数据分析→Web→实战，每条附视频</div>';
   h+='</div>';
-  h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>📦 PMP 产品项目实践</span><span class="more" onclick="${rmM?'openRoadmap(\'pmp\')':'enablePlan(\'pmp\')'}">${rmM?('进度 '+rmM.idx+'/'+rmM.nodes.length+' ›'):'启用 ›'}</span></div>`;
+  h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>📦 PMP 产品项目实践</span><span class="more" onclick="${rmM?'openRoadmap(\'pmp\')':'enablePlan(\'pmp\')'}">${rmM?('进度 '+doneM+'/'+rmM.nodes.length+' ›'):'启用 ›'}</span></div>`;
   if(rmM){ const tm=tTasks.filter(x=>x.plan==='pmp'); h+=`<div class="list">${tm.map(x=>taskLi(x)).join('')||'<div class="empty">今日无自动任务</div>'}</div>`; h+=`<div class="btn ghost mt" onclick="openRoadmap('pmp')">📋 完整课程清单（${rmM.nodes.length}节）</div>`; }
   else h+='<div class="small muted" style="padding:2px 0">竞品/PRD/调研/数据/复盘，每条附视频</div>';
   h+='</div>';
@@ -1552,7 +1554,8 @@ function studyTech(sd,t){
 }
 function studyInvest(sd,t){
   let h=''; const inv=sd.invest||{enabled:false,idx:0};
-  const curStage = (inv.idx < INVEST_TASKS.length) ? INVEST_TASKS[inv.idx].stage : 4;
+  const doneInv=sd.tasks.filter(x=>x.plan==='invest'&&x.done); const doneInvN=doneInv.length;
+  const curStage = doneInvN ? Math.max.apply(null,doneInv.map(x=>x.stage)) : 1;
   const chips=INVEST_PLAN.map(s=>`<button onclick="investStage(${s.stage})" style="flex:1;padding:9px 2px;border:1px solid ${s.stage===curStage?'#e08600':'#e6e6e6'};border-radius:10px;background:${s.stage===curStage?'#fff4e6':'#fff'};color:${s.stage===curStage?'#e08600':'#888'};font-size:12px">${s.stage}.${s.name.split('·')[0].slice(0,5)}</button>`).join('');
   h+=`<div class="card"><div class="card-h" style="cursor:pointer" onclick="investStage(${curStage})"><span class="t"><i class="dot"></i>📈 理财四阶段学习</span><span class="more">${inv.enabled?('阶段 '+curStage+'/4 ›'):'点击查看 ›'}</span></div>
     <div class="small muted mt">启蒙 → 低风险工具 → 基金定投 → 进阶实战，每天自动排课 + 视频</div>
@@ -1560,9 +1563,9 @@ function studyInvest(sd,t){
     <div class="btn ghost mt" onclick="openInvestRoadmap()">📋 完整课程清单</div>
     ${inv.enabled?'':`<div class="btn ghost mt" onclick="enablePlan('invest')">▶ 开启此计划</div>`}</div>`;
   if(inv.enabled){
-    h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>学习进度</span><span class="more">阶段 ${curStage}/4</span></div>
-      <div class="bar mt"><i style="width:${U.clamp(inv.idx/Math.max(1,INVEST_TASKS.length)*100,0,100)}%"></i></div>
-      <div class="small muted mt">已学 ${Math.min(inv.idx,INVEST_TASKS.length)}/${INVEST_TASKS.length} 节 · 阶段4为长期实战循环</div></div>`;
+    h+=`<div class="card mt">      <div class="card-h"><span class="t"><i class="dot"></i>学习进度</span><span class="more">已学 ${doneInvN}/${INVEST_TASKS.length} 节</span></div>
+      <div class="bar mt"><i style="width:${U.clamp(doneInvN/Math.max(1,INVEST_TASKS.length)*100,0,100)}%"></i></div>
+      <div class="small muted mt">已勾选 ${doneInvN}/${INVEST_TASKS.length} 节 · 未勾选即未学 · 阶段4为长期实战循环</div></div>`;
     const todayInv=sd.tasks.filter(x=>x.date===t&&x.plan==='invest');
     h+=`<div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>今日投资学习任务</span><span class="more">${todayInv.filter(x=>x.done).length}/${todayInv.length}</span></div>
       ${todayInv.length?`<div class="list">${todayInv.map(x=>taskLi(x)).join('')}</div>`:'<div class="empty">今日无安排，点下方补充</div>'}
@@ -1643,6 +1646,16 @@ function studyExtra(cat){
 }
 function saveStudyNote(cat,v){ DB.data.study[cat]=v.split('\n').filter(Boolean); DB.save(); }
 function toggleStudy(id){ const t=DB.data.study.tasks.find(x=>x.id===id); if(t){ t.done=!t.done; if(t.done)t.doneDate=U.today(); Store.emit('study'); renderStudy(); } }
+function resetStudyProgress(){
+  if(!confirm('确定清空所有学习进度吗？\n· 所有已勾选 ✓ 会清除（标回未学）\n· Python / PMP / 理财 的阶段指针归零\n· 雅思跟读标记清空\n· 任务清单会保留，你重新勾选即可\n\n之后进度只按你真实勾选计算，当日没勾的课程就是没学。')) return;
+  const sd=DB.data.study;
+  sd.tasks.forEach(x=>{ x.done=false; x.doneDate=null; });
+  if(sd.roadmap.python) sd.roadmap.python.idx=0;
+  if(sd.roadmap.pmp) sd.roadmap.pmp.idx=0;
+  if(sd.invest){ sd.invest.idx=0; sd.invest.loopIdx=0; }
+  if(sd.ielts&&sd.ielts.items) sd.ielts.items.forEach(it=>it.done=false);
+  DB.save(); toast('已清空学习进度'); renderStudy();
+}
 function genPlan(){ const mod=window._studyMod||'技术'; const sd=DB.data.study; if((sd.custom||[]).some(c=>c.name===mod)){ genCustomToday(mod); return; } const h=prompt('每日学习时长（小时）？','1'); if(h==null) return; AI.handle('制定每日'+h+'小时'+mod+'学习计划'); toast('已生成'); go('m/study'); }
 /* ============ 模块1 工作计划 ============ */
 function renderWork(){
