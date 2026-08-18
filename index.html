@@ -1199,7 +1199,7 @@ const AI = {
     if(s.aiProxy){
       try{
         const res=await fetch(s.aiProxy,{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({messages,model:s.apiModel||'doubao-seed-1-6-250615',apiBase:s.apiBase,apiKey:s.apiKey,temperature:0.7})});
+          body:JSON.stringify({messages,model:s.apiModel||'qwen-plus',apiBase:s.apiBase,apiKey:s.apiKey,provider:s.aiProvider||'qwen',temperature:0.7})});
         const txt=await res.text();
         let j; try{ j=JSON.parse(txt); }catch(_){ /* 响应非 JSON */ }
         if(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content){
@@ -1207,7 +1207,7 @@ const AI = {
         }
         // 把后端错误原样带回去，给出真实诊断线索（之前静默吞错让用户以为"已配"）
         const errDetail = (j && j.error) ? String(j.error).slice(0,300) : ('HTTP '+res.status+' · '+(txt||'<空响应>').slice(0,200));
-        return '❌ AI 代理「'+s.aiProxy+'」调用失败：'+errDetail+'。\n\n排查：①后端是否正常（Railway 是否在运行）；②后端 env 是否配了 ARK_API_KEY；③地址是否多了空格或路径写错。';
+        return '❌ AI 代理「'+s.aiProxy+'」调用失败：'+errDetail+'。\n\n排查：①后端是否正常（Railway 是否在运行）；②后端 env 是否配了对应 API Key（通义千问=DASHSCOPE_API_KEY / 方舟=ARK_API_KEY）；③地址是否多了空格或路径写错。';
       }catch(e){
         return '❌ AI 代理「'+s.aiProxy+'」网络异常：'+(e&&e.message||e)+'。\n\n排查：手机是否能访问该地址（外网），或后端是否允许跨域。';
       }
@@ -2741,7 +2741,7 @@ function renderSettings(){
       <button class="btn ghost mt" onclick="editAI()">配置 API</button>
       <div class="kv"><span class="k">AI 代理地址</span><span>${s.aiProxy?'已配置':'未配置'}</span></div>
       <button class="btn ghost mt" onclick="editAIProxy()">配置 AI 代理</button>
-      <div class="small muted mt">代理地址指向你部署的后端 /api/ai，可规避浏览器跨域，Key 放后端更安全，手机端零配置也能用 AI。</div></div>
+      <div class="small muted mt">代理地址指向你部署的后端 /api/ai，可规避浏览器跨域，Key 放后端更安全，手机端零配置也能用 AI。通义千问需在后端环境变量配 DASHSCOPE_API_KEY（默认模型 qwen-plus），切回方舟配 ARK_API_KEY。</div></div>
     <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>🌐 联网抓取（真实热点）</span></div>
       <div class="small muted mb">配置本地抓取服务地址后，「选题&灵感」可一键联网拉取抖音/小红书最新真实热点（需运行配套 fetch-server.js）。留空则使用内置真实种子库（按日轮转）。</div>
       <div class="kv"><span class="k">抓取端点</span><span>${s.net.endpoint?'已配置':'未配置'}</span></div>
@@ -2782,7 +2782,13 @@ function editNetIndustry(){ const s=DB.data.settings.net; const sel=(s.industry|
   UI.openSheet('配置内容领域', body, null, {});
 }
 function editMarketApi(){ const s=DB.data.settings; UI.openForm('配置理财趋势资讯端点',[{key:'marketApi',label:'市场资讯服务地址',type:'text',placeholder:'http://localhost:3001/api/market-news',value:s.marketApi}],v=>{ s.marketApi=v.marketApi.trim(); DB.save(); toast('已保存'); if(s.marketApi) marketFetchNet(); go('support/settings'); }); }
-function editAIProxy(){ const s=DB.data.settings; UI.openForm('配置 AI 代理地址',[{key:'aiProxy',label:'代理服务地址',type:'text',placeholder:'https://你的后端/api/ai',value:s.aiProxy}],v=>{ s.aiProxy=v.aiProxy.trim(); DB.save(); toast('已保存'); go('support/settings'); }); }
+function editAIProxy(){ const s=DB.data.settings; UI.openForm('配置 AI 代理',[
+  {key:'aiProxy',label:'代理服务地址',type:'text',placeholder:'https://你的后端/api/ai',value:s.aiProxy},
+  {key:'aiProvider',label:'AI 服务商',type:'seg',options:['qwen','ark'],value:s.aiProvider||'qwen'},
+  {key:'apiModel',label:'模型名（可选，留空用服务商默认）',type:'text',placeholder:'qwen-plus / doubao-seed-1-6-250615',value:s.apiModel},
+  {key:'apiBase',label:'API Base（可选，留空用服务商默认）',type:'text',placeholder:'留空=自动',value:s.apiBase},
+  {key:'apiKey',label:'API Key（可选，留空用后端变量最安全）',type:'text',placeholder:'留空=用后端环境变量',value:s.apiKey}
+],v=>{ s.aiProxy=(v.aiProxy||'').trim(); s.aiProvider=v.aiProvider||'qwen'; s.apiModel=(v.apiModel||'').trim(); s.apiBase=(v.apiBase||'').trim(); s.apiKey=(v.apiKey||'').trim(); DB.save(); toast('已保存'); go('support/settings'); }); }
 /* ============ 0.1 提醒与日程中心 ============ */
 function ensureReminders(){ if(DB.data.reminders&&DB.data.reminders.length) return;
   DB.data.reminders=[
