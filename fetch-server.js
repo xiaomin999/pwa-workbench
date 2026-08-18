@@ -334,10 +334,21 @@ http.createServer(async (req,res)=>{
     req.on('end',async()=>{
       try{
         const p=JSON.parse(body||'{}');
-        const apiBase=p.apiBase||process.env.ARK_API_BASE||'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-        const apiKey=p.apiKey||process.env.ARK_API_KEY||'';
-        const model=p.model||p.apiModel||process.env.ARK_MODEL||'doubao-seed-1-6-250615';
-        if(!apiKey){ res.statusCode=400; res.setHeader('Content-Type','application/json;charset=utf-8'); return res.end(JSON.stringify({error:'未提供 apiKey，且后端未配置 ARK_API_KEY 环境变量'})); }
+        // provider 选择：AI_PROVIDER 指定；否则有 DASHSCOPE_API_KEY 用通义千问，否则用火山方舟
+        const provider=(p.provider||process.env.AI_PROVIDER||(process.env.DASHSCOPE_API_KEY?'qwen':(process.env.ARK_API_KEY?'ark':'qwen'))).toLowerCase();
+        let apiBase, apiKey, model, keyName;
+        if(provider==='ark'){
+          apiBase=p.apiBase||process.env.ARK_API_BASE||'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+          apiKey=p.apiKey||process.env.ARK_API_KEY||'';
+          model=p.model||p.apiModel||process.env.ARK_MODEL||'doubao-seed-1-6-250615';
+          keyName='ARK_API_KEY';
+        } else { // qwen（通义千问，OpenAI 兼容接口）
+          apiBase=p.apiBase||process.env.DASHSCOPE_API_BASE||'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+          apiKey=p.apiKey||process.env.DASHSCOPE_API_KEY||'';
+          model=p.model||p.apiModel||process.env.DASHSCOPE_MODEL||'qwen-plus';
+          keyName='DASHSCOPE_API_KEY';
+        }
+        if(!apiKey){ res.statusCode=400; res.setHeader('Content-Type','application/json;charset=utf-8'); return res.end(JSON.stringify({error:'未提供 apiKey，且后端未配置 '+keyName+' 环境变量（provider='+provider+'）'})); }
         const r=await fetch(apiBase,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},body:JSON.stringify({model,messages:p.messages||[],temperature:p.temperature||0.7,stream:false})});
         const txt=await r.text();
         res.statusCode=r.status;
@@ -356,5 +367,5 @@ http.createServer(async (req,res)=>{
   console.log('[server] 后端服务已启动: http://localhost:'+PORT);
   console.log('  GET  /api/topics      -> 抖音/小红书选题 (HOT_API 启用实时)');
   console.log('  GET  /api/market-news -> 理财趋势资讯 (NEWS_API 启用实时)');
-  console.log('  POST /api/ai          -> AI 对话代理 (ARK_API_KEY)');
+  console.log('  POST /api/ai          -> AI 对话代理 (默认通义千问 qwen，可用 AI_PROVIDER=ark 切回火山方舟)');
 });
