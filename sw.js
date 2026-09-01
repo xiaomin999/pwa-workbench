@@ -1,4 +1,4 @@
-const CACHE = 'wb-app-v29';
+const CACHE = 'wb-app-v30';
 const ASSETS = ['./', './index.html', './manifest.webmanifest'];
 self.addEventListener('install', function (e) {
   e.waitUntil(
