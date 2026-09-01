@@ -2409,8 +2409,24 @@ function addMarketNews(){
    数据来源：离线优先 + 各平台深链跳转（对接薅羊毛助手需配置 Coze API） */
 const SAVASY_PLATS=['全部','淘宝','拼多多','京东','抖音','美团','支付宝'];
 const SAVASY_PCOLOR={'全部':'#888','淘宝':'#ff5000','拼多多':'#e02e24','京东':'#e1251b','抖音':'#111','美团':'#ffc300','支付宝':'#1677ff'};
-/* 各平台领券/红包直达深链：点「去领」直接打开对应平台领券中心，不再停在首页 */
-const SAVASY_COUPON={'淘宝':'https://quan.taobao.com/','拼多多':'https://mobile.yangkeduo.com/search_result.html?search_key=优惠券','京东':'https://coupon.m.jd.com/','抖音':'https://www.douyin.com/search/优惠券','美团':'https://www.meituan.com/','支付宝':'https://www.alipay.com/'};
+/* 各平台「优惠入口」+「口令/关键词」：浏览器无法直接 deep-link 到 App 领券页，
+   故改成打开平台可访问页，并自动复制对应搜索口令/关键词，用户去 App/网页粘贴即可直达优惠点。 */
+const SAVASY_COUPON={
+  '淘宝':'https://s.taobao.com/search?q=%E4%BC%98%E6%83%A0%E5%88%B8',
+  '拼多多':'https://mobile.yangkeduo.com/',
+  '京东':'https://www.jd.com/',
+  '抖音':'https://www.douyin.com/search/%E4%BC%98%E6%83%A0%E5%88%B8',
+  '美团':'https://www.meituan.com/',
+  '支付宝':'https://www.alipay.com/'
+};
+const SAVASY_KW={
+  '淘宝':'天天领红包',
+  '拼多多':'百亿补贴',
+  '京东':'领券中心',
+  '抖音':'超值购',
+  '美团':'天天神券',
+  '支付宝':'消费红包'
+};
 const SAVASY_DTYPES=['免费','返利','折扣券','红包','折扣'];
 const SAVASY_CATS=['食品','物品','生活','其他'];
 const SAVASY_DAILY=[
@@ -2492,6 +2508,23 @@ const SAVASY_GUIDE={
   }
 };
 
+function copyText(text,label){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>toast((label?label+'已复制：':'已复制：')+'「'+text+'」')).catch(()=>fallbackCopy(text,label));
+  } else { fallbackCopy(text,label); }
+  function fallbackCopy(t,l){
+    const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast((l?l+'已复制：':'已复制：')+'「'+t+'」'); }catch(e){ toast('复制失败，请手动长按复制：'+t); }
+    document.body.removeChild(ta);
+  }
+}
+function openCoupon(plat,url){
+  const u=url||SAVASY_COUPON[plat]||'';
+  const kw=SAVASY_KW[plat]||'';
+  if(u) window.open(u,'_blank');
+  if(kw){ setTimeout(()=>copyText(kw,plat+'口令'), 200); }
+  toast('已打开 '+plat+(u?'':'（网页版）')+(kw?'，口令「'+kw+'」已复制，去 App 搜索领取':''));
+}
 function saveasyStat(){
   const arr=DB.data.saveasy.deals;
   const todo=arr.filter(x=>x.status==='待领').length;
@@ -2502,7 +2535,7 @@ function saveasyGuideCard(plat){
   const g=SAVASY_GUIDE[plat]; if(!g) return '';
   const c=g.color||'#333';
   const tc=t=>({'免费':'green','返利':'blue','折扣券':'orange','红包':'red','折扣':'gray'}[t]||'gray');
-  const list=g.methods.map(m=>`<div class="li" style="cursor:pointer;align-items:flex-start" onclick="window.open('${SAVASY_COUPON[plat]||m.url}','_blank')"><span class="main">
+  const list=g.methods.map(m=>`<div class="li" style="cursor:pointer;align-items:flex-start" onclick="openCoupon('${plat}','${m.url}')"><span class="main">
     <div class="title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${m.title} <span class="pill ${tc(m.tag)}">${m.tag}</span></div>
     <div class="desc" style="margin-top:4px;line-height:1.7">${m.detail}</div>
   </span><span class="right" style="color:${c}">↗</span></div>`).join('');
@@ -2510,18 +2543,18 @@ function saveasyGuideCard(plat){
     <div class="card-h"><span class="t" style="color:${c}"><i class="dot" style="background:${c}"></i>📌 ${plat} 专属优惠攻略</span></div>
     <div class="small muted" style="margin-bottom:10px;line-height:1.6">${g.intro}</div>
     <div class="list">${list}</div>
-    <div class="small muted mt" style="margin-top:10px">点击任意一项直达该平台对应活动页面领取 ↗</div>
+    <div class="small muted mt" style="margin-top:10px">点击任意一项打开平台页面并自动复制口令/关键词，去 App 搜索即可领取 ↗</div>
   </div>`;
 }
 function renderSaveasy(){
   const d=DB.data.saveasy; const plat=d.selectPlatform||'全部';
   const st=saveasyStat();
   const list=DB.data.saveasy.deals.filter(x=>plat==='全部'||x.platform===plat).slice().reverse();
-  const express=`<div class="card" style="border-left:4px solid #ff8c1a;margin-bottom:12px"><div class="card-h"><span class="t"><i class="dot" style="background:#ff8c1a"></i>🎯 优惠直通车 · 点我去领</span><span class="more" style="background:#fff4e0;color:#b97700;padding:2px 8px;border-radius:6px;font-size:11px">直达领券页</span></div>
+  const express=`<div class="card" style="border-left:4px solid #ff8c1a;margin-bottom:12px"><div class="card-h"><span class="t"><i class="dot" style="background:#ff8c1a"></i>🎯 优惠直通车 · 点我去领</span><span class="more" style="background:#fff4e0;color:#b97700;padding:2px 8px;border-radius:6px;font-size:11px">打开+口令</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">
-        ${SAVASY_PLATS.filter(p=>p!=='全部').map(p=>`<button onclick="window.open('${SAVASY_COUPON[p]}','_blank')" style="padding:11px 4px;border:1px solid ${SAVASY_PCOLOR[p]};border-radius:10px;background:#fff;color:${SAVASY_PCOLOR[p]};font-weight:700;font-size:13px;cursor:pointer">🐑 ${p}<br><span style="font-size:11px;font-weight:600;opacity:.8">领券/红包</span></button>`).join('')}
+        ${SAVASY_PLATS.filter(p=>p!=='全部').map(p=>`<button onclick="openCoupon('${p}')" style="padding:11px 4px;border:1px solid ${SAVASY_PCOLOR[p]};border-radius:10px;background:#fff;color:${SAVASY_PCOLOR[p]};font-weight:700;font-size:13px;cursor:pointer">🐑 ${p}<br><span style="font-size:11px;font-weight:600;opacity:.8">打开+口令</span></button>`).join('')}
       </div>
-      <div class="small muted mt" style="margin-top:10px">每个按钮直接打开对应平台「领券/红包」页面，无需再翻找。下方还能按平台看专属攻略、按关键词全网比价。</div>
+      <div class="small muted mt" style="margin-top:10px">电商优惠多在 App 内领取，浏览器无法直接 deep-link。点击按钮会<b>打开平台页面</b>并<b>自动复制对应口令/关键词</b>，去 App 搜索即可直达优惠点。</div>
     </div>`;
   const ptab=SAVASY_PLATS.map(k=>{const on=k===plat;const c=SAVASY_PCOLOR[k];return `<button onclick="setSaveasyPlat('${k}')" style="flex:1;min-width:54px;padding:9px 2px;border:1px solid ${on?c:'#e6e6e6'};border-radius:10px;background:${on?c:'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:${on?'700':'500'}">${k}</button>`;}).join('');
   const tc=t=>({'免费':'green','返利':'blue','折扣券':'orange','红包':'red','折扣':'gray'}[t]||'gray');
@@ -2531,10 +2564,10 @@ function renderSaveasy(){
     <div class="desc">${x.platform} ｜ ${x.cat||'物品'}${x.amount_saved?(' ｜ 省 ¥'+x.amount_saved):''}</div>
     <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="pill ${tc(x.type)}">${x.type}</span><span class="pill ${sc(x.status)}">${x.status}</span></div>
   </span><span class="right">›</span></div>`).join('')}</div>`:`<div class="empty"><div class="big">🐑</div>${plat==='全部'?'还没有收集的羊毛。':'「'+plat+'」还没有羊毛。'}点上方「➕ 收集羊毛」或在对话里说「记录羊毛：...」</div>`;
-  const dailyHTML=SAVASY_DAILY.map(x=>`<div class="li" style="cursor:pointer" onclick="window.open('${SAVASY_COUPON[x.plat]||x.url}','_blank')"><span class="main"><div class="title">${x.plat} · <span class="pill ${tc(x.tag)}">${x.tag}</span></div><div class="desc">${x.act}</div></span><span class="right">↗</span></div>`).join('');
+  const dailyHTML=SAVASY_DAILY.map(x=>`<div class="li" style="cursor:pointer" onclick="openCoupon('${x.plat}','${x.url}')"><span class="main"><div class="title">${x.plat} · <span class="pill ${tc(x.tag)}">${x.tag}</span></div><div class="desc">${x.act}</div></span><span class="right">↗</span></div>`).join('');
   const guideSection = plat==='全部'
     ? `<div class="card" style="border-left:3px solid #ffb300"><div class="card-h"><span class="t"><i class="dot" style="background:#ffb300"></i>📅 今日各平台可领清单</span><span class="more" style="background:#fff4e0;color:#b97700;padding:2px 8px;border-radius:6px;font-size:11px">每天更新</span></div>
-      <div class="small muted" style="margin-bottom:8px">点击任意一项直达对应平台领券 / 签到页面：</div>
+      <div class="small muted" style="margin-bottom:8px">点击任意一项打开平台页面，并自动复制口令/关键词去 App 搜索领取：</div>
       <div class="list">${dailyHTML}</div>
       <div class="small muted mt" style="margin-top:10px">👆 点上方平台 Tab，查看该平台<b>专属优惠攻略</b>（每种优惠的领取方式与详情）。</div>
     </div>`
