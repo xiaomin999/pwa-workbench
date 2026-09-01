@@ -1017,11 +1017,6 @@ const AI = {
       const name=text.replace(/.*(删除|去掉|删掉).{0,4}/,'').replace(/记录|刚才|刚刚|吃的|食物|的/g,'');
       return this._delFood(name);
     }
-    // —— 体重 ——
-    if(m=text.match(/记录?体重[：:]?\s*([0-9.]+)\s*(kg|公斤|千克)?/)){ return this._logWeight(parseFloat(m[1])); }
-    if(/记体重|测体重|称体重/.test(text)){ R.reply='请告诉我今天的体重，例如「记录体重 62.5kg」。'; R.goto='m/weight'; return R; }
-    // —— 运动 ——
-    if(m=text.match(/记录?(.{1,6}?)\s*(\d+)\s*(分钟|min|小时|h)/i)){ return this._logExercise(m[1],parseInt(m[2]),/小时|h/i.test(m[3])?60:1); }
     // —— 存钱 ——
     if(m=text.match(/记录?副业收入\s*([0-9]+)/)){ return this._logFlow('in','副业收入',+m[1],'副业'); }
     if(m=text.match(/记录?主业收入\s*([0-9]+)/)){ return this._logFlow('in','主业收入',+m[1],'主业'); }
@@ -1084,25 +1079,6 @@ const AI = {
     for(const k in d.meals){ const before=d.meals[k].length; d.meals[k]=d.meals[k].filter(x=>!(name&&(x.name.includes(name)||x.raw.includes(name)))); removed+=before-d.meals[k].length; }
     Store.emit('diet');
     return {reply:removed?`已删除含「${name}」的 ${removed} 条记录。`:`没找到含「${name}」的记录。`};
-  },
-  _logWeight(w){
-    DB.data.weight.records.push({date:U.today(),weight:w,time:U.nowMin()});
-    Store.emit('weight');
-    const prof=DB.data.settings.profile; const bmi=(w/Math.pow((prof.height||162)/100,2)).toFixed(1);
-    const t=U.today(); const diet=DB.data.diet.byDate[t];
-    let kc=0; if(diet) Object.values(diet.meals).flat().forEach(f=>kc+=f.kcal||0);
-    const tdee=calcTDEE(prof); const target=Math.round(tdee-(prof.reduceRate||0.5)*7700/7);
-    let msg=`已记录体重 ${w}kg，BMI ${bmi}（${bmi>=24?'偏胖':bmi>=18.5?'正常':'偏瘦'}）。`;
-    msg+=`\n今日目标摄入 ${target}kcal，已摄入 ${Math.round(kc)}kcal。`;
-    if(prof.targetWeight&&w>prof.targetWeight) msg+=`\n距目标还差 ${(w-prof.targetWeight).toFixed(1)}kg，保持节奏～`;
-    return {reply:msg, goto:'m/weight'};
-  },
-  _logExercise(name,num,unitMul){
-    const min=num*unitMul; name=name.trim(); const kc=AIcompute.exerciseKcal(name,min);
-    DB.data.weight.records.push({date:U.today(),type:'exercise',name,min,kcal:kc,time:U.nowMin()});
-    Store.emit('weight');
-    const prof=DB.data.settings.profile; const deficit=Math.round((prof.reduceRate||0.5)*7700/7);
-    return {reply:`已记录${name} ${min}分钟，消耗约 ${kc}kcal。今日可摄入额度已放宽约 ${kc}kcal，晚餐可以多吃点优质蛋白 💪`};
   },
   _logFlow(type,cat,amount,group){
     DB.data.save.flows.push({id:U.uid(),type,cat,group,amount,date:U.today(),note:cat,time:U.nowMin()});
@@ -1272,7 +1248,7 @@ const UI = {
 /* ============ 路由 ============ */
 const ROUTES = {
   home: renderHome, chat: renderChat, modules: renderModules, mine: renderMine,
-  'm/work': renderWork, 'm/study': renderStudy, 'm/weight': renderWeight,
+  'm/work': renderWork, 'm/study': renderStudy,
   'm/save': renderSave, 'm/ideas': renderIdeas, 'm/hot': renderHot, 'm/diet': renderDiet, 'm/ecom': renderEcom, 'm/market': renderMarket, 'm/saveasy': renderSaveasy,
   'support/reminders': renderReminders, 'support/export': renderExport,
   'support/ach': renderAch, 'support/settings': renderSettings
@@ -1285,7 +1261,7 @@ const TABS=[
 ];
 let curRoute='home';
 function go(route){ curRoute=route; const fn=ROUTES[route]; if(fn) fn(); renderNav(); if(window.innerWidth<=820) document.body.classList.remove('sb-open'); window.scrollTo(0,0); }
-const SIDEBAR_TITLES={home:'小助理','m/work':'工作计划','m/study':'学习计划','m/weight':'减肥计划','m/save':'存钱计划','m/ideas':'选题 & 灵感','m/hot':'爆款 & 二创','m/diet':'饮食热量','m/ecom':'电商选品','m/market':'理财趋势','m/saveasy':'省钱助手',mine:'我的','support/reminders':'提醒中心','support/export':'导出 & 备份','support/ach':'成就打卡','support/settings':'设置'};
+const SIDEBAR_TITLES={home:'小助理','m/work':'工作计划','m/study':'学习计划','m/save':'存钱计划','m/ideas':'选题 & 灵感','m/hot':'爆款 & 二创','m/diet':'饮食热量','m/ecom':'电商选品','m/market':'理财趋势','m/saveasy':'省钱助手',mine:'我的','support/reminders':'提醒中心','support/export':'导出 & 备份','support/ach':'成就打卡','support/settings':'设置'};
 function renderSidebar(){
   const box=U.$('#sbModules'); if(!box) return;
   box.innerHTML=MODULES.map(m=>`<div class="sb-item" onclick="go('${m.k}')" data-route="${m.k}"><span class="ico">${m.ico}</span><span class="lab">${m.nm}</span></div>`).join('');
@@ -1360,7 +1336,6 @@ function weekBoard(){
 const MODULES=[
   {k:'m/work',ico:'📋',nm:'工作计划',ds:'任务/四象限/复盘'},
   {k:'m/study',ico:'📚',nm:'学习计划',ds:'三分类/自动排课'},
-  {k:'m/weight',ico:'⚖️',nm:'减肥计划',ds:'热量缺口/围度'},
   {k:'m/save',ico:'💰',nm:'存钱计划',ds:'目标/收支/测算'},
   {k:'m/ideas',ico:'💡',nm:'选题&灵感',ds:'状态流转/扩写'},
   {k:'m/hot',ico:'🔥',nm:'爆款&二创',ds:'拆解/脚本'},
@@ -1438,7 +1413,7 @@ function renderDiet(){
     <div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>快捷对话</span></div>
       <div class="small muted">直接在「对话」里说：<b>早餐一个水煮蛋、一杯无糖豆浆、半根玉米</b>，或 <b>早午餐吃了鸡胸肉沙拉，帮我推荐晚餐</b></div>
       <div class="btn ghost mt" onclick="go('chat')">打开 AI 对话</div></div>
-    <div class="note">🍽 全天数据实时同步「减肥计划」热量缺口</div>`);
+    <div class="note">🍽 已实时计算今日热量缺口，晚餐前可参考剩余额度</div>`);
 }
 function addMeal(){
   UI.openForm('记录一餐',[
@@ -1451,36 +1426,6 @@ function addMeal(){
 }
 function aiRecommend(){ const r=AIcompute.recommendMeals(); UI.openSheet('🤖 AI 配餐推荐',`<div class="small" style="white-space:pre-wrap;line-height:1.7">${U.escape(r)}</div><div class="btn ghost mt" onclick="UI.closeSheet()">知道了</div>`); }
 function delFood(meal,i){ const t=U.today(); const d=DB.data.diet.byDate[t]; d.meals[meal].splice(i,1); if(!d.meals[meal].length) delete d.meals[meal]; Store.emit('diet'); go('m/diet'); }
-/* ============ 模块3 减肥计划 ============ */
-function renderWeight(){
-  const w=DB.data.weight.records.filter(r=>!r.type);
-  const ex=DB.data.weight.records.filter(r=>r.type==='exercise');
-  const prof=DB.data.settings.profile; const last=w[w.length-1];
-  const bmi=last?(last.weight/Math.pow((prof.height||162)/100,2)).toFixed(1):'—';
-  const a=Store.agg().diet;
-  const target=Math.round(calcTDEE(prof)-(prof.reduceRate||0.5)*7700/7);
-  UI.mount(`<div class="page-head"><h1>减肥计划</h1><span class="sub">热量闭环</span></div>
-    <div class="hero"><div class="lab">最新体重 / 目标</div><div class="big">${last?last.weight+' kg':'—'} <small style="font-size:15px">→ 目标 ${prof.targetWeight}kg</small></div>
-      <div class="lab mt">BMI ${bmi} ${bmi!=='—'?(bmi>=24?'偏胖':bmi>=18.5?'正常':'偏瘦'):''} ｜ 每日目标摄入 ${target} kcal</div></div>
-    <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>今日热量缺口</span></div>
-      <div class="grid2"><div class="stat"><div class="k">已摄入</div><div class="v">${a.kcal}<small> kcal</small></div></div>
-      <div class="stat"><div class="k">当前缺口</div><div class="v" style="color:${a.gap<0?'var(--c-green)':'var(--c-red)'}">${Math.abs(a.gap)}<small> ${a.gap<0?'kcal ✅':'kcal 盈余'}</small></div></div></div>
-      <div class="small muted mt">数据来自「饮食热量」实时同步；运动记录会自动放宽额度。</div></div>
-    <div class="btn-row"><button class="btn ghost" onclick="addWeight()">⚖️ 记录体重</button><button class="btn ghost" onclick="addExercise()">🏃 记录运动</button></div>
-    <div class="card mt"><div class="card-h"><span class="t"><i class="dot"></i>体重记录</span></div>
-      ${w.length?`<div class="list">${w.slice(-8).reverse().map(r=>`<div class="li"><span class="main"><div class="title">${r.weight} kg</div><div class="desc">${r.date} ${r.time||''}</div></span><button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="delRec('weight','${r.id}')">✕</button></div>`).join('')}</div>`:'<div class="empty">暂无记录</div>'}</div>
-    <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>运动台账</span></div>
-      ${ex.length?`<div class="list">${ex.slice(-8).reverse().map(r=>`<div class="li"><span class="main"><div class="title">${r.name} · ${r.min}分钟</div><div class="desc">${r.date} 消耗 ${r.kcal}kcal</div></span><button class="icon-btn" style="width:30px;height:30px;font-size:15px" onclick="delRec('exercise','${r.id}')">✕</button></div>`).join('')}</div>`:'<div class="empty">暂无记录</div>'}</div>
-    <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>身体数据设置</span></div>
-      <div class="kv"><span class="k">身高</span><span>${prof.height} cm</span></div>
-      <div class="kv"><span class="k">目标体重</span><span>${prof.targetWeight} kg</span></div>
-      <div class="kv"><span class="k">周减重速率</span><span>${prof.reduceRate} kg/周</span></div>
-      <div class="btn ghost mt" onclick="editProfile()">修改资料</div></div>`);
-}
-function addWeight(){ UI.openForm('记录体重',[{key:'w',label:'体重 (kg)',type:'number',value:DB.data.settings.profile.weight}],v=>{ DB.data.weight.records.push({id:U.uid(),date:U.today(),weight:+v.w,time:U.nowMin()}); Store.emit('weight'); toast('已记录'); go('m/weight'); }); }
-function addExercise(){ UI.openForm('记录运动',[{key:'n',label:'运动类型',type:'text',placeholder:'慢跑/游泳/力量训练…'},{key:'m',label:'时长(分钟)',type:'number',value:30}],v=>{ const kc=AIcompute.exerciseKcal(v.n,+v.m); DB.data.weight.records.push({id:U.uid(),date:U.today(),type:'exercise',name:v.n,min:+v.m,kcal:kc,time:U.nowMin()}); Store.emit('weight'); toast('消耗约 '+kc+'kcal'); go('m/weight'); }); }
-function delRec(type,id){ DB.data.weight.records=DB.data.weight.records.filter(r=>r.id!==id); Store.emit('weight'); go('m/weight'); }
-function editProfile(){ const p=DB.data.settings.profile; UI.openForm('身体数据',[{key:'sex',label:'性别',type:'seg',options:['男','女'],value:p.sex},{key:'height',label:'身高 cm',type:'number',value:p.height},{key:'age',label:'年龄',type:'number',value:p.age},{key:'weight',label:'当前体重 kg',type:'number',value:p.weight},{key:'targetWeight',label:'目标体重 kg',type:'number',value:p.targetWeight},{key:'reduceRate',label:'周减重 kg',type:'number',value:p.reduceRate}],v=>{ DB.data.settings.profile={sex:v.sex,height:+v.height,age:+v.age,weight:+v.weight,targetWeight:+v.targetWeight,reduceRate:+v.reduceRate}; DB.save(); toast('已保存'); go('m/weight'); }); }
 /* ============ 模块2 学习计划 ============ */
 function studyBoard(){
   const sd=DB.data.study;
@@ -2464,6 +2409,8 @@ function addMarketNews(){
    数据来源：离线优先 + 各平台深链跳转（对接薅羊毛助手需配置 Coze API） */
 const SAVASY_PLATS=['全部','淘宝','拼多多','京东','抖音','美团','支付宝'];
 const SAVASY_PCOLOR={'全部':'#888','淘宝':'#ff5000','拼多多':'#e02e24','京东':'#e1251b','抖音':'#111','美团':'#ffc300','支付宝':'#1677ff'};
+/* 各平台领券/红包直达深链：点「去领」直接打开对应平台领券中心，不再停在首页 */
+const SAVASY_COUPON={'淘宝':'https://quan.taobao.com/','拼多多':'https://mobile.yangkeduo.com/search_result.html?search_key=优惠券','京东':'https://coupon.m.jd.com/','抖音':'https://www.douyin.com/search/优惠券','美团':'https://www.meituan.com/','支付宝':'https://www.alipay.com/'};
 const SAVASY_DTYPES=['免费','返利','折扣券','红包','折扣'];
 const SAVASY_CATS=['食品','物品','生活','其他'];
 const SAVASY_DAILY=[
@@ -2555,7 +2502,7 @@ function saveasyGuideCard(plat){
   const g=SAVASY_GUIDE[plat]; if(!g) return '';
   const c=g.color||'#333';
   const tc=t=>({'免费':'green','返利':'blue','折扣券':'orange','红包':'red','折扣':'gray'}[t]||'gray');
-  const list=g.methods.map(m=>`<div class="li" style="cursor:pointer;align-items:flex-start" onclick="window.open('${m.url}','_blank')"><span class="main">
+  const list=g.methods.map(m=>`<div class="li" style="cursor:pointer;align-items:flex-start" onclick="window.open('${SAVASY_COUPON[plat]||m.url}','_blank')"><span class="main">
     <div class="title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${m.title} <span class="pill ${tc(m.tag)}">${m.tag}</span></div>
     <div class="desc" style="margin-top:4px;line-height:1.7">${m.detail}</div>
   </span><span class="right" style="color:${c}">↗</span></div>`).join('');
@@ -2570,6 +2517,12 @@ function renderSaveasy(){
   const d=DB.data.saveasy; const plat=d.selectPlatform||'全部';
   const st=saveasyStat();
   const list=DB.data.saveasy.deals.filter(x=>plat==='全部'||x.platform===plat).slice().reverse();
+  const express=`<div class="card" style="border-left:4px solid #ff8c1a;margin-bottom:12px"><div class="card-h"><span class="t"><i class="dot" style="background:#ff8c1a"></i>🎯 优惠直通车 · 点我去领</span><span class="more" style="background:#fff4e0;color:#b97700;padding:2px 8px;border-radius:6px;font-size:11px">直达领券页</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">
+        ${SAVASY_PLATS.filter(p=>p!=='全部').map(p=>`<button onclick="window.open('${SAVASY_COUPON[p]}','_blank')" style="padding:11px 4px;border:1px solid ${SAVASY_PCOLOR[p]};border-radius:10px;background:#fff;color:${SAVASY_PCOLOR[p]};font-weight:700;font-size:13px;cursor:pointer">🐑 ${p}<br><span style="font-size:11px;font-weight:600;opacity:.8">领券/红包</span></button>`).join('')}
+      </div>
+      <div class="small muted mt" style="margin-top:10px">每个按钮直接打开对应平台「领券/红包」页面，无需再翻找。下方还能按平台看专属攻略、按关键词全网比价。</div>
+    </div>`;
   const ptab=SAVASY_PLATS.map(k=>{const on=k===plat;const c=SAVASY_PCOLOR[k];return `<button onclick="setSaveasyPlat('${k}')" style="flex:1;min-width:54px;padding:9px 2px;border:1px solid ${on?c:'#e6e6e6'};border-radius:10px;background:${on?c:'#fff'};color:${on?'#fff':'#333'};font-size:13px;font-weight:${on?'700':'500'}">${k}</button>`;}).join('');
   const tc=t=>({'免费':'green','返利':'blue','折扣券':'orange','红包':'red','折扣':'gray'}[t]||'gray');
   const sc=s=>(s==='已领'?'green':s==='已过期'?'gray':'orange');
@@ -2578,7 +2531,7 @@ function renderSaveasy(){
     <div class="desc">${x.platform} ｜ ${x.cat||'物品'}${x.amount_saved?(' ｜ 省 ¥'+x.amount_saved):''}</div>
     <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="pill ${tc(x.type)}">${x.type}</span><span class="pill ${sc(x.status)}">${x.status}</span></div>
   </span><span class="right">›</span></div>`).join('')}</div>`:`<div class="empty"><div class="big">🐑</div>${plat==='全部'?'还没有收集的羊毛。':'「'+plat+'」还没有羊毛。'}点上方「➕ 收集羊毛」或在对话里说「记录羊毛：...」</div>`;
-  const dailyHTML=SAVASY_DAILY.map(x=>`<div class="li" style="cursor:pointer" onclick="window.open('${x.url}','_blank')"><span class="main"><div class="title">${x.plat} · <span class="pill ${tc(x.tag)}">${x.tag}</span></div><div class="desc">${x.act}</div></span><span class="right">↗</span></div>`).join('');
+  const dailyHTML=SAVASY_DAILY.map(x=>`<div class="li" style="cursor:pointer" onclick="window.open('${SAVASY_COUPON[x.plat]||x.url}','_blank')"><span class="main"><div class="title">${x.plat} · <span class="pill ${tc(x.tag)}">${x.tag}</span></div><div class="desc">${x.act}</div></span><span class="right">↗</span></div>`).join('');
   const guideSection = plat==='全部'
     ? `<div class="card" style="border-left:3px solid #ffb300"><div class="card-h"><span class="t"><i class="dot" style="background:#ffb300"></i>📅 今日各平台可领清单</span><span class="more" style="background:#fff4e0;color:#b97700;padding:2px 8px;border-radius:6px;font-size:11px">每天更新</span></div>
       <div class="small muted" style="margin-bottom:8px">点击任意一项直达对应平台领券 / 签到页面：</div>
@@ -2587,6 +2540,7 @@ function renderSaveasy(){
     </div>`
     : saveasyGuideCard(plat);
   UI.mount(`<div class="page-head"><h1>省钱助手</h1><span class="sub">返利 / 免费 / 折扣</span></div>
+    ${express}
     <div style="display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap">${ptab}</div>
     <div class="grid3" style="margin-bottom:12px">
       <div class="stat"><div class="k">收集总数</div><div class="v">${st.total}<small> 条</small></div></div>
@@ -2732,8 +2686,6 @@ function renderSettings(){
       <div class="kv"><span class="k">昵称</span><span>${s.name||'—'}</span></div>
       <div class="kv"><span class="k">性别</span><span>${p.sex}</span></div>
       <div class="kv"><span class="k">身高/年龄/体重</span><span>${p.height}cm / ${p.age}岁 / ${p.weight}kg</span></div>
-      <div class="kv"><span class="k">目标体重</span><span>${p.targetWeight}kg (${p.reduceRate}kg/周)</span></div>
-      <button class="btn ghost mt" onclick="editProfile();go('support/settings')">修改身体数据</button>
       <button class="btn ghost mt" onclick="editName();go('support/settings')">修改昵称</button></div>
     <div class="card"><div class="card-h"><span class="t"><i class="dot"></i>AI 设置（可选）</span></div>
       <div class="small muted mb">填写后，复杂任务（生成/对话/扩写）将调用真实大模型；留空则使用本地规则，完全离线。</div>
@@ -2794,7 +2746,6 @@ function ensureReminders(){ if(DB.data.reminders&&DB.data.reminders.length) retu
   DB.data.reminders=[
     {id:U.uid(),type:'study',label:'学习打卡提醒',on:true,cycle:'daily',time:'20:00'},
     {id:U.uid(),type:'diet',label:'饮食录入提醒',on:true,cycle:'daily',time:'19:00'},
-    {id:U.uid(),type:'weight',label:'体重记录提醒',on:false,cycle:'daily',time:'08:00'},
     {id:U.uid(),type:'save',label:'收支记账提醒',on:false,cycle:'daily',time:'22:00'},
     {id:U.uid(),type:'video',label:'视频脚本截止提醒',on:false,cycle:'weekly',time:'10:00'}
   ]; DB.save();
@@ -2818,7 +2769,6 @@ function renderExport(){
         <button class="btn soft sm" onclick="expModule('work')">工作计划 CSV</button>
         <button class="btn soft sm" onclick="expModule('study')">学习计划 CSV</button>
         <button class="btn soft sm" onclick="expModule('diet')">饮食台账 CSV</button>
-        <button class="btn soft sm" onclick="expModule('weight')">减肥体重 CSV</button>
         <button class="btn soft sm" onclick="expModule('save')">存钱收支 CSV</button>
         <button class="btn soft sm" onclick="expModule('ideas')">灵感 CSV</button>
         <button class="btn soft sm" onclick="expModule('hot')">爆款视频 CSV</button>
@@ -2835,7 +2785,6 @@ function expModule(k){
   if(k==='work'){ head='名称,描述,状态,优先级,预估分,截止,项目'; rows=DB.data.work.tasks.map(t=>[t.title,t.desc||'',t.status,t.priority,t.est,t.deadline||'',t.project||'']); }
   else if(k==='study'){ head='分类,任务,时长分,日期,完成'; rows=DB.data.study.tasks.map(t=>[t.cat,t.title,t.estMin,t.date,t.done?'1':'0']); }
   else if(k==='diet'){ head='日期,餐次,食物,克,热量,蛋白,碳水,脂肪'; rows=Object.entries(DB.data.diet.byDate).flatMap(([d,o])=>Object.entries(o.meals||{}).flatMap(([m,arr])=>arr.map(f=>[d,m,f.name,f.grams,f.kcal,f.protein,f.carb,f.fat]))); }
-  else if(k==='weight'){ head='日期,类型,体重/运动,分钟,消耗'; rows=DB.data.weight.records.map(r=>[r.date,r.type||'weight',r.type==='exercise'?r.name:r.weight,r.min||'',r.kcal||'']); }
   else if(k==='save'){ head='日期,类型,分类,金额,备注'; rows=DB.data.save.flows.map(f=>[f.date,f.type,f.cat,f.amount,f.note||'']); }
   else if(k==='ideas'){ head='标题,状态,受众,形式,标签'; rows=DB.data.ideas.items.map(i=>[i.title,i.status,i.audience||'',i.form,(i.tags||[]).join('/')]); }
   else if(k==='hot'){ head='标题,平台,热度,已出片'; rows=DB.data.hot.items.map(h=>[h.title,h.platform,h.heat,h.scriptDone?'1':'0']); }
@@ -2863,7 +2812,6 @@ function renderAch(){
   UI.mount(`<div class="page-head"><h1>成就打卡</h1><span class="sub">轻量激励</span></div>
     ${card('连续学习打卡',s.study,'📚')}
     ${card('连续记账',s.save,'💰')}
-    ${card('连续记录体重',s.weight,'⚖️')}
     ${card('连续录入饮食',s.diet,'🍱')}
     <div class="note">达成 3 天连续即解锁徽章，保持工具属性，不做复杂游戏化。</div>`);
 }
